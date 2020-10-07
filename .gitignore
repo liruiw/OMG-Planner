@@ -1,0 +1,12 @@
+*.pyc
+.idea/*
+*.so
+*egg-info*
+*.avi
+*.pdf
+layers/build
+layers/dist
+__pycache__
+data
+output_videos
+ 
