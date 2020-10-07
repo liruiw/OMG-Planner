@@ -501,7 +501,7 @@ class Planner(object):
                         target_hand_pose = target_hand_pose[:,None]
 
                     # difference angle
-                    R_diff = np.matmul(target_hand_pose[..., :3, :3], start_hand_pose[:3,:3].transpose(0,1))
+                    R_diff = np.matmul(target_hand_pose[..., :3, :3], start_hand_pose[:3,:3].transpose(1,0))
                     angle = np.abs(np.arccos((np.trace(R_diff, axis1=2, axis2=3) - 1 ) /  2))
                     angle = angle * 180 / np.pi 
                     rot_masks = angle > self.cfg.target_hand_filter_angle

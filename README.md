@@ -13,11 +13,11 @@ git clone https://github.com/liruiw/OMG-prerelease.git --recursive
 
 1. Install [anaconda](https://docs.anaconda.com/anaconda/install/) and create the virtual env for python 2 / 3
  
-```angular2html
-conda create --name omg python=3.6.9/2.7.15
-conda activate omg
-pip install -r requirements.txt
-``` 
+    ```angular2html
+    conda create --name omg python=3.6.9/2.7.15
+    conda activate omg
+    pip install -r requirements.txt
+    ``` 
 
 2. Install [ycb_render](ycb_render)  
 
@@ -47,24 +47,24 @@ pip install -r requirements.txt
     ```
 6. Install the submodule PyKDL
 
-```bash  
-cd orocos_kinematics_dynamics
-cd sip-4.19.3
-python configure.py
-make -j8; sudo make install
- 
-export ROS_PYTHON_VERSION=3
-cd ../orocos_kdl
-mkdir build; cd build;
-cmake ..
-make -j8; sudo make install
-  
-cd ../../python_orocos_kdl
-mkdir build; cd build;
-cmake ..  -DPYTHON_VERSION=3.6.9 -DPYTHON_EXECUTABLE=~/anaconda2/envs/omg/bin/python3.6
-make -j8;  cp PyKDL.so ~/anaconda2/envs/omg/lib/python3.6/site-packages/
-```
- 
+    ```bash  
+    cd orocos_kinematics_dynamics
+    cd sip-4.19.3
+    python configure.py
+    make -j8; sudo make install
+     
+    export ROS_PYTHON_VERSION=3
+    cd ../orocos_kdl
+    mkdir build; cd build;
+    cmake ..
+    make -j8; sudo make install
+      
+    cd ../../python_orocos_kdl
+    mkdir build; cd build;
+    cmake ..  -DPYTHON_VERSION=3.6.9 -DPYTHON_EXECUTABLE=~/anaconda2/envs/omg/bin/python3.6
+    make -j8;  cp PyKDL.so ~/anaconda2/envs/omg/lib/python3.6/site-packages/
+    ```
+     
 
 ### Common Usage
 0. run ```./download_data.sh``` for data (Around 600 MB).
