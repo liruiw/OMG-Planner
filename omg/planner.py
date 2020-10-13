@@ -409,20 +409,20 @@ class Planner(object):
 
                 if not target_obj.attached:
 
-                    """ nvidia generated poses """
+                    """ simulator generated poses """
                     if len(target_obj.grasps_poses) == 0:
-                        nvidia_path = (
+                        simulator_path = (
                             self.cfg.robot_model_path
                             + "/../grasps/simulated/{}.npy".format(target_obj.name)
                         )
-                        if not os.path.exists(nvidia_path):
+                        if not os.path.exists(simulator_path):
                             continue
                         try:
-                            simulator_grasp = np.load(nvidia_path, allow_pickle=True)
+                            simulator_grasp = np.load(simulator_path, allow_pickle=True)
                             pose_grasp = simulator_grasp.item()["transforms"]
                         except:
                             simulator_grasp = np.load(
-                                nvidia_path,
+                                simulator_path,
                                 allow_pickle=True,
                                 fix_imports=True,
                                 encoding="bytes",
@@ -431,6 +431,7 @@ class Planner(object):
 
                         offset_pose = np.array(rotZ(np.pi / 2))  # and
                         pose_grasp = np.matmul(pose_grasp, offset_pose)  # flip x, y
+                        pose_grasp = ycb_special_case(pose_grasp, target_obj.name)
                         target_obj.grasps_poses = pose_grasp
 
                     else:

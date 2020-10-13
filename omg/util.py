@@ -330,3 +330,30 @@ def get_sample_goals(scene, goalset, goal_idx):
             grasp_set_poses.append(grasp_set_pose[j])
         grasp_set_index.extend(list(range(7,10)))       
     return grasp_set_poses, grasp_set_index
+
+def ycb_special_case(pose_grasp, name):
+    if name == '037_scissors': # only accept top down for edge cases
+        z_constraint = np.where((np.abs(pose_grasp[:, 2, 3]) > 0.09) * \
+                 (np.abs(pose_grasp[:, 1, 3]) > 0.02) * (np.abs(pose_grasp[:, 0, 3]) < 0.05)) 
+        pose_grasp = pose_grasp[z_constraint[0]]
+        top_down = []
+        
+        for pose in pose_grasp:
+            top_down.append(mat2euler(pose[:3, :3]))
+        
+        top_down = np.array(top_down)[:,1]
+        rot_constraint = np.where(np.abs(top_down) > 0.06) 
+        pose_grasp = pose_grasp[rot_constraint[0]]
+    
+    elif name == '024_bowl' or name == '025_mug':
+        if name == '024_bowl':
+            angle = 30
+        else:
+            angle = 15
+        top_down = []
+        for pose in pose_grasp:
+            top_down.append(mat2euler(pose[:3, :3]))
+        top_down = np.array(top_down)[:,1]
+        rot_constraint = np.where(np.abs(top_down) > angle * np.pi / 180)
+        pose_grasp = pose_grasp[rot_constraint[0]]
+    return pose_grasp
