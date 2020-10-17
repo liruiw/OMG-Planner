@@ -5,6 +5,7 @@ scipy
 pyopengl==3.1.0
 opencv-python==3.4.3.18
 transforms3d
+torchvision==0.4.2
 torch==1.4.0
 pillow
 IPython

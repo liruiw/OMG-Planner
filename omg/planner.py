@@ -389,7 +389,8 @@ class Planner(object):
                     )
             p.terminate()
             cnt = np.sum(1 - np.array(any_ik))
-        print(
+        if not self.cfg.silent:
+            print(
             "{} IK init time: {:.3f}, failed_ik: {}, goal set num: {}/{}".format(
                 target_obj.name,
                 time.time() - start_time,
@@ -586,15 +587,16 @@ class Planner(object):
                     target_obj.reach_grasps = np.array(target_obj.reach_grasps)
                     target_obj.grasp_potentials.append(potentials[sample_goals])
                     target_obj.grasp_vis_points.append(vis_points[sample_goals])
-                    print(
+                    if not self.cfg.silent:
+                        print(
                         "{} IK FOUND collision-free goal num {}/{}/{}/{}".format(
                             env.objects[i].name,
                             len(target_obj.reach_grasps),
                             len(target_obj.grasps),
                             num,
                             ik_goal_num,
+                            )
                         )
-                    )
                 else:
                     print("{} IK FAIL".format(env.objects[i].name))
 
@@ -647,7 +649,8 @@ class Planner(object):
                 if self.info[-1]["terminate"]
                 else "FAIL DONT EXECUTE"
             )
-            print(
+            if not self.cfg.silent:
+                print(
                 "planning time: {:.3f} PLAN {} Length: {}".format(
                     plan_time, res, len(self.history_trajectories[-1])
                 )
@@ -655,5 +658,5 @@ class Planner(object):
             self.info[-1]["time"] = plan_time
 
         else:
-            print("planning not run...")
+            if not self.cfg.silent: print("planning not run...")
         return self.info

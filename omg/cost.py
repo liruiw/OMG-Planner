@@ -310,12 +310,7 @@ class Cost(object):
         for idx, obs in enumerate(self.env.objects):
             if obs.name == "floor" or obs.name in self.cfg.disable_collision_set:
                 disables[idx] = 1
-
-            if idx == special_check_id:
-                padding_scale = self.cfg.target_obj_collision
-                eps = self.cfg.target_epsilon
-                clearances[idx] = 0
-
+ 
             padding_scale = 1
             eps = self.cfg.epsilon
             clearances[idx] = self.cfg.clearance
@@ -323,7 +318,7 @@ class Cost(object):
             padding_scales[idx] = padding_scale
             poses[idx] = se3_inverse(obs.pose_mat)
 
-        # call the layer
+        # forward layer
         poses = torch.from_numpy(poses).cuda()
         epsilons = torch.from_numpy(epsilons).cuda()
         clearances = torch.from_numpy(clearances).cuda()

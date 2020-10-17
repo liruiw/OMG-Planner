@@ -31,9 +31,8 @@ cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
 cfg.base_obstacle_weight = 1.0  # 1.0 weight for obstacle cost in total cost
 cfg.base_grasp_weight = 1.0  # weight for grasp cost in total cost
 cfg.cost_schedule_decay = 1  # cost schedule decay for obstacle cost weight wrt base
-cfg.cost_schedule_boost = (
-    1.02  # cost schedule boost for smoothness cost weight  
-)
+cfg.cost_schedule_boost = 1.02  # cost schedule boost for smoothness cost weight  
+ 
 cfg.base_step_size = 0.1  # initial step size in gradient descent
 cfg.step_decay_rate = 1.0  # decay rate for step size in gradient descent
 cfg.joint_limit_max_steps = 10  # maximum smooth projection steps for joint limit
@@ -60,37 +59,28 @@ cfg.terminate_smooth_loss = 35  # terminate condition for trajectory
 cfg.penalize_constant = 5  # scaling negative sdf values to avoid collision
 cfg.grasp_optimize = False  # the option of optimizing grasp term
 cfg.traj_init = "grasp"  # use ik or precomputed grasp list to initialize the goal
-cfg.traj_interpolate = (
-    "cubic"  # interpolate trajectory waypoints between start and end
-)
+cfg.traj_interpolate = "cubic"  # interpolate trajectory waypoints between start and end
+ 
 cfg.goal_set_proj = True  # use the goal set variant of CHOMP
 cfg.goal_set_max_num = 100  # the maximum number of goals in the goal set
 cfg.ol_alg = "MD"  # the online learning algorithm for updating grasp distribution
 cfg.dist_eps = 0.1  # weight coefficients for projected distance
-cfg.goal_idx = (
-    -2
-)  # >0: goal index in goal set, -1: closest, -2: minimum cost, -3: random
+cfg.goal_idx = -2  # >0: goal index in goal set, -1: closest, -2: minimum cost, -3: random
 cfg.pre_terminate = True  # terminate condition
 cfg.ik_seed_num = 12  # anchor seed number to solve for inverse kinematics
 cfg.finger_hard_constraint = True  # direct constraint on the fingers
-cfg.uncheck_finger_collision = (
-    0  # -1 means uncheck finger collision during optimization
-)
-cfg.allow_collision_point = (
-    5  # allowing collision point number for the entire trajectory
-)
-cfg.soft_joint_limit_padding = (
-    0.2  # constraint planning joint limit to be smaller than actual ones
-)
+cfg.uncheck_finger_collision = 0  # -1 means uncheck finger collision during optimization
+cfg.allow_collision_point = 5  # allowing collision point number for the entire trajectory
+ 
+cfg.soft_joint_limit_padding = 0.2  # constraint planning joint limit to be smaller than actual ones
 cfg.extra_smooth_steps = 20  # extra steps for postprocessing fixed goal
 cfg.clip_grad_scale = 10.0  # clip the update gradients
 cfg.normalize_cost = True  # normalize ol costs
 cfg.disable_collision_set = []  # object names to fully disable collision check
 cfg.use_standoff = True  # use use_standoff for grasp stability
 cfg.standoff_dist = 0.08  # standoff distance before grasping
-cfg.remove_flip_grasp = (
-    True  # remove all grasps that require wrist to rotate over 180 degrees
-)
+cfg.remove_flip_grasp = True  # remove all grasps that require wrist to rotate over 180 degrees
+ 
 cfg.augment_flip_grasp = True  # augment grasps by flipping over 180 degrees
 cfg.target_hand_filter_angle = 120  # for filtering grasps that require heavy rotation
 cfg.dynamic_timestep = False  # for dynamically choosing length of the trajectory
@@ -130,6 +120,7 @@ cfg.cam_pos = [
 cfg.cam_V = None  # the extrinsics for visualization
 cfg.report_time = False  # verbose plan time check
 cfg.output_video_name = "test_video.avi"
+cfg.silent = False
 
 
 """ global function """
