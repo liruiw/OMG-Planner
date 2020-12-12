@@ -1,7 +1,7 @@
  
 [submodule "orocos_kinematics_dynamics"]
 	path = orocos_kinematics_dynamics
-	url = git@github.com:liruiw/orocos_kinematics_dynamics.git
+	url = https://github.com/liruiw/orocos_kinematics_dynamics.git
 [submodule "Sophus"]
 	path = Sophus
 	url = https://github.com/yuxng/Sophus.git
