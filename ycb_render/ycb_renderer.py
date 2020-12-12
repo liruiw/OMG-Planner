@@ -1,7 +1,7 @@
 # --------------------------------------------------------
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
-
+ 
 import sys
 import ctypes
 
@@ -22,6 +22,7 @@ import numpy.random as npr
 import IPython
 import subprocess
 import multiprocessing
+
 import threading
 import platform
 
@@ -300,7 +301,9 @@ class YCBRenderer:
         self.poses_trans = []
         self.poses_rot = []
         self.instances = []
-        self.parallel_textures = True
+        self.parallel_textures = False
+        self.parallel_load_mesh = False
+
         self.robot = robot
         self._offset_map = None
         if robot == "panda_arm" or robot == "baxter" and offset:
@@ -1100,15 +1103,19 @@ class YCBRenderer:
 
         if len(mesh_files) == 0:
             return None, None
-        p = multiprocessing.Pool(processes=4) 
-        scenes = p.map_async(
-            load_mesh_single,
-            [
-                [mesh_files[i], scales[i], self._offset_map]
-                for i in range(len(mesh_files))
-            ],
-        ).get()
-        p.terminate()
+        if not self.parallel_load_mesh:
+            scenes = [load_mesh_single([mesh_files[i], scales[i], self._offset_map])
+                    for i in range(len(mesh_files))]
+        else:
+            p = multiprocessing.Pool(processes=4) 
+            scenes = p.map_async(
+                load_mesh_single,
+                [
+                    [mesh_files[i], scales[i], self._offset_map]
+                    for i in range(len(mesh_files))
+                ],
+            ).get()
+            p.terminate()
 
         textures = [0 for _ in scenes]
 
