@@ -45,9 +45,9 @@ git clone https://github.com/liruiw/OMG-Planner.git --recursive
     cd layers
     python setup.py install
     ```
-6. Install the submodule PyKDL
+6. Install the submodule PyKDL. Check this tutorial [here](https://git.ias.informatik.tu-darmstadt.de/lutter/ias_pykdl/blob/8b864ccf81763439ba5d45a359e1993208c2247c/pykdl.md) if there is any issue with installing PyKDL.
 
-    ```bash  
+    ```bash
     cd orocos_kinematics_dynamics
     cd sip-4.19.3
     python configure.py
