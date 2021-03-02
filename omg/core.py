@@ -362,10 +362,13 @@ class Env(object):
     # combine sdfs of all the objects in the env
     def combine_sdfs(self):
         s = time.time()
-        max_shape = np.array([obj.sdf.data.shape for obj in self.objects]).max(axis=0)
+        num = len(self.objects)
+        if num > 0:
+            max_shape = np.array([obj.sdf.data.shape for obj in self.objects]).max(axis=0)
+        else:
+            max_shape = np.array([10, 10, 10])
         if config.cfg.report_time:
             print("sdf max shape %d %d %d" % (max_shape[0], max_shape[1], max_shape[2]))
-        num = len(self.objects)
         self.sdf_torch = torch.ones(
             (num, max_shape[0], max_shape[1], max_shape[2]), dtype=torch.float32
         ).cuda()
