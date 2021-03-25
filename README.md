@@ -1,5 +1,5 @@
 # OMG-Planner 
-[[webpage](https://liruiw.github.io/planning.html), [paper](https://arxiv.org/abs/1911.10280)]
+[[webpage](https://sites.google.com/view/omg-planner), [paper](https://arxiv.org/abs/1911.10280)]
 
 
 ![image](assets/top.PNG)
