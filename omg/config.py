@@ -15,7 +15,7 @@ import torch
 
 
 ############ Note #############
-# A few parameters to start with
+# Parameters:
 #     1.  Related to collision: target_obj_collision, epsilon, target_epsilon, clearance, top_k_collision, uncheck_finger_collision
 #     2.  Related to goal selection: goal_idx, dist_eps, ol_alg, eta, normalize_cost
 #     3.  Related to initialization: ik_seed_num, goal_set_max_num, remove_flip_grasp, ik_parallel, ik_clearance

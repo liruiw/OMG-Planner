@@ -2,7 +2,7 @@
 [[webpage](https://sites.google.com/view/omg-planner), [paper](https://arxiv.org/abs/1911.10280)]
 
 
-![image](assets/top.PNG)
+![image](assets/omg.gif)
 
 ### Installation
 ```bash
@@ -66,7 +66,7 @@ git clone https://github.com/liruiw/OMG-Planner.git --recursive
     ```
 
 
-### Common Usage
+### Common Usages
 0. run ```./download_data.sh``` for data (Around 600 MB).
 1. Run the planner to grasp objects.
 
@@ -115,7 +115,7 @@ python -m bullet.panda_kitchen_scene -v -f kitchen0       |  python -m bullet.pa
     python -m bullet.vis_data -o img
     ```
 
-### Process New Shape
+### Process New Shapes
 0. To process shape, one would need [SDFGen](https://github.com/christopherbatty/SDFGen), [blenderpy](https://pypi.org/project/bpy/), [VHACD](https://github.com/bulletphysics/bullet3/tree/master/Extras/VHACD).
 
 1. Generate related files for your own mesh. (.obj file in data/objects/)
