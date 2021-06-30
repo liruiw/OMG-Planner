@@ -296,6 +296,8 @@ def ros_quat(tf_quat):  # wxyz -> xyzw
     quat[:-1] = tf_quat[1:]
     return quat
 
+def close_integer(a, b):
+    return np.abs(a - b) < 1e-2
 
 def tf_quat(ros_quat):  # xyzw -> wxyz
     quat = np.zeros(4)
@@ -316,34 +318,34 @@ def get_hand_anchor_index_point():
     )
     line_index = [[0, 1, 1, 2, 3], [1, 2, 3, 4, 5]]
     return hand_anchor_points, line_index
- 
+
 def get_sample_goals(scene, goalset, goal_idx):
     grasp_set_index = []
     grasp_set_poses = []
     display_grasp_num = 8
     selected_index = list(np.linspace(0, len(scene.traj.goal_set) - 1, display_grasp_num).astype(np.int)) + [goal_idx]
-    
+
     for idx in selected_index:
         _, grasp_set_pose = scene.prepare_render_list(scene.traj.goal_set[idx])
         for j in range(7, 10):
             grasp_set_poses.append(grasp_set_pose[j])
-        grasp_set_index.extend(list(range(7,10)))       
+        grasp_set_index.extend(list(range(7,10)))
     return grasp_set_poses, grasp_set_index
 
 def ycb_special_case(pose_grasp, name):
     if name == '037_scissors' or name == '010_potted_meat_can' or name == '061_foam_brick': # only accept top down for edge cases
         z_constraint = np.where((np.abs(pose_grasp[:, 2, 3]) > 0.09) * \
-                 (np.abs(pose_grasp[:, 1, 3]) > 0.02) * (np.abs(pose_grasp[:, 0, 3]) < 0.05)) 
+                 (np.abs(pose_grasp[:, 1, 3]) > 0.02) * (np.abs(pose_grasp[:, 0, 3]) < 0.05))
         pose_grasp = pose_grasp[z_constraint[0]]
         top_down = []
-        
+
         for pose in pose_grasp:
             top_down.append(mat2euler(pose[:3, :3]))
-        
+
         top_down = np.array(top_down)[:,1]
-        rot_constraint = np.where(np.abs(top_down) > 0.06) 
+        rot_constraint = np.where(np.abs(top_down) > 0.06)
         pose_grasp = pose_grasp[rot_constraint[0]]
-    
+
     elif name == '024_bowl' or name == '025_mug' or name == '010_potted_meat_can':
         if name == '024_bowl':
             angle = 50 # 30
@@ -361,3 +363,13 @@ def ycb_special_case(pose_grasp, name):
         pose_grasp = np.matmul(pose_grasp, forward_addition)
 
     return pose_grasp
+
+def grasp_gripper_lines(pose):
+    hand_anchor_points, line_index = get_hand_anchor_index_point()
+    hand_points = (
+        np.matmul(pose[:, :3, :3], hand_anchor_points.T) + pose[:, :3, [3]]
+    )
+    hand_points = hand_points.transpose([1, 0, 2])
+    p1 = hand_points[:, :, line_index[0]].reshape([3, -1])
+    p2 = hand_points[:, :, line_index[1]].reshape([3, -1])
+    return [p1], [p2]

@@ -210,9 +210,7 @@ class Planner(object):
                 self.traj.goal_idx = self.cfg.goal_idx
 
             elif self.cfg.goal_idx == -1:  # initial
-                costs = (
-                    self.traj.goal_potentials + self.cfg.dist_eps * proj_dist
-                )
+                costs = self.traj.goal_potentials + self.cfg.dist_eps * proj_dist
                 self.traj.goal_idx = np.argmin(costs)
 
             else:

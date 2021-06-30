@@ -92,7 +92,7 @@ cfg.consider_finger = False  # consider finger in optimization
 cfg.reach_tail_length = 5  # the trajectory length for standoff reaching
 cfg.use_layer = True  # use sdf layer or torch cuda for collision check
 cfg.increment_iks = False  # for more goals during solving iks
-cfg.ik_parallel = True  # for more goals during solving iks
+cfg.ik_parallel = True  # faster solving iks
 cfg.traj_delta = 0.05  # resolution for trajectory state discretization
 cfg.colored_gripper = False  # use colored robot model
 cfg.traj_max_step = 50  # maximum step
@@ -128,7 +128,7 @@ cfg.report_time = False  # verbose plan time check
 cfg.output_video_name = "test_video.avi" # output video
 cfg.silent = False # mute
 cfg.timeout = 3. # -1.
-
+cfg.external_grasps = None # grasps from external sources such as offline scenes or grasp detectors
 
 """ global function """
 def get_derivative(data, start, end, diff_rule=1):

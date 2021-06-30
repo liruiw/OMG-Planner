@@ -74,9 +74,19 @@ python -m omg.core -v -f demo_scene_0         |  python -m omg.core -v -f demo_s
 :-------------------------:|:-------------------------:
 <img src="assets/demo_table.gif" width="300" height="225"/>  |  <img src="assets/demo_table2.gif" width="300" height="225"/>
 
+2. Run the planner from perception inputs.
+
+python -m omg.core -v -f demo_scene_0 -p         |  python -m omg.core -v -f demo_scene_1 -p
+:-------------------------:|:-------------------------:
+<img src="assets/demo_table_p.gif" width="300" height="225"/>  |  <img src="assets/demo_table_p2.gif" width="300" height="225"/>
+
+3. Run the planner in kitchen scenes with interfaces.
+
 python -m real_world.trial -s  script.txt  -v  -f kitchen0        |  python -m real_world.trial -s  script2.txt -v  -f kitchen1
 :-------------------------:|:-------------------------:
 <img src="assets/demo_cabinet.gif" width="300" height="225"/>  |  <img src="assets/demo_cabinet2.gif" width="300" height="225"/>
+
+4. Run the planner in kitchen scenes with mouse clicks.
 
 python -m real_world.trial_mouse -v  -f kitchen0    | python -m real_world.trial_mouse -v  -f kitchen1
 :-------------------------:|:-------------------------:
@@ -90,11 +100,13 @@ python -m real_world.trial_mouse -v  -f kitchen0    | python -m real_world.trial
 ### PyBullet Experiments and Demonstrations
 0. Install PyBullet `pip install pybullet gym` (build with eglRender for faster rendering)
 
-1. Run planning in PyBullet simulator
+1. Run planning in PyBullet simulator.
 
 python -m bullet.panda_scene -v -f demo_scene_2        |  python -m bullet.panda_scene -v -f demo_scene_3
 :-------------------------:|:-------------------------:
  <img src="assets/demo_bullet.gif" width="300" height="225"/> | <img src="assets/demo_bullet2.gif" width="300" height="225"/>
+
+2. Run planning in PyBullet simulator for kitchen scene.
 
 python -m bullet.panda_kitchen_scene -v -f kitchen0       |  python -m bullet.panda_kitchen_scene -v -f kitchen1 -s script2.txt
 :-------------------------:|:-------------------------:

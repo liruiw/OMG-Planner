@@ -1940,6 +1940,7 @@ class YCBRenderer:
                 draw_normal=normal_toggle,
                 draw_grid=grid_toggle,
             )
+            self.rendered_frames = frames
             frame = [frames[img_toggle]]
 
             if point_info is not None:
@@ -1987,6 +1988,7 @@ class YCBRenderer:
                 obj_name = self.objects[obj_idx].split('/')[-2]
                 self.click_obj_idx = obj_idx
                 self.click_obj_name = obj_name
+
 
             if self.place_click_pix_loc is not None:
                 img = cv2.circle(img, self.place_click_pix_loc, 5, (0, 0, 255), 2)

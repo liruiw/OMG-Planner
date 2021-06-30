@@ -341,21 +341,22 @@ class Env(object):
         self.objects[self.target_idx].compute_grasp = True
         self.objects[self.target_idx].type = 'target'
 
-    def remove_object(self, name):
+    def remove_object(self, name, lazy=False):
         """
         Remove an object
         """
         index = self.names.index(name)
         for obj_list in [self.objects, self.names, self.indexes]:
             del obj_list[index]
-        self.combine_sdfs()
+        if not lazy:
+            self.combine_sdfs()
 
     def clear(self):
         """
         Clean the scene
         """
         for name in self.names:
-            self.remove_object(name)
+            self.remove_object(name, lazy=True)
 
     def update_pose(self, name, pose):
         index = self.names.index(name)
@@ -497,9 +498,42 @@ class PlanningScene(object):
         Debug and trajectory and related information
         """
         def fast_vis_simple(poses, cls_indexes, obj_vis_points, interact):
+
+            vis_pt = []
+            vis_color = []
+            point_size = []
             visualize_context={"white_bg": True}
-            if len(obj_vis_points) > 0:
-                visualize_context["project_point"] = obj_vis_points
+
+            if len(obj_vis_points) > 0 and len(obj_vis_points[0]) > 0:
+
+                points = obj_vis_points[0]
+                if points.shape[0] == 4:
+                    label = points[3, :]
+
+                    # target
+                    target = points[:3, label == 0]
+                    vis_pt.extend([target])
+                    vis_color.append([0, 255, 0])
+                    point_size.append(3)
+
+                    # other
+                    other = points[:3, label == 1]
+                    vis_pt.extend([other])
+                    vis_color.append([255, 0, 0])
+                    point_size.append(3)
+                else:
+                    vis_pt.extend([points])
+                    vis_color.append([255, 0, 0])
+                    point_size.append(3)
+
+                visualize_context = { "white_bg": True, "project_point":vis_pt,
+                                    "project_color":vis_color,
+                                    "reset_line_point": True }
+                if  hasattr(config.cfg, 'external_grasps') and config.cfg.external_grasps is not None:
+                    line_starts, line_ends = grasp_gripper_lines(config.cfg.external_grasps)
+                    visualize_context["line"] = [(line_starts[0], line_ends[0])]
+                    visualize_context["line_color"] = [[0, 0, 255]]
+
             return self.renderer.vis(
                             poses,
                             cls_indexes,
@@ -748,7 +782,6 @@ class PlanningScene(object):
 if __name__ == "__main__":
 
     import argparse
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-v", "--vis", help="visualization", action="store_true"
@@ -764,6 +797,7 @@ if __name__ == "__main__":
     parser.add_argument("-w", "--write_video", help="write video", action="store_true")
     parser.add_argument("-g", "--grasp", help="grasp initialization", type=str, default="grasp")
     parser.add_argument("-exp", "--experiment", help="loop through the 100 scenes", action="store_true")
+    parser.add_argument("-p", "--perception", help="use pointcloud and known grasp set as input", action="store_true")
 
     args = parser.parse_args()
     config.cfg.output_video_name = "output_videos/" + args.file + ".avi"
@@ -781,12 +815,59 @@ if __name__ == "__main__":
     config.cfg.vis = args.vis or args.write_video
 
     if not args.experiment:
-        scene = PlanningScene(config.cfg)
-        info = scene.step()
-        if args.vis or args.write_video:
+        if not args.perception:
+            # example for standard planning: pose estimation with known models
+            scene = PlanningScene(config.cfg)
+            info = scene.step()
+            if args.vis or args.write_video:
+                scene.fast_debug_vis(interact=int(args.vis), write_video=args.write_video,
+                            nonstop=True, collision_pt=args.vis_collision_pt, goal_set=args.vis_goalset)
+        else:
+            # example for planning from observation:
+            # require target segmentation and grasps
+            # approximate obstacles with point clouds
+
+            # load the standard scene, render and get observation point clouds and segmentations
+            scene = PlanningScene(config.cfg)
+            scene.fast_debug_vis(interact=0, traj_type=0)
+            frames = scene.renderer.rendered_frames
+            mask = frames[1]
+            points = frames[3][...,:3]
+            robot_mesh_num = 10
+            target_mask = close_integer(mask[...,-2], scene.env.target_idx + robot_mesh_num)
+            bg_mask = close_integer(mask.sum(-1), len(scene.renderer.objects) - 1)
+            non_target_mask = (~bg_mask) * (~target_mask) * (mask[...,-2] > robot_mesh_num)
+
+            # cv2.imshow('test1',  target_mask.astype(np.uint8) * 255)
+            # cv2.imshow('test2',  non_target_mask.astype(np.uint8) * 255)
+            # cv2.waitKey(0)
+
+            # use loaded grasps as external sources of goals
+            grasps = sio.loadmat(os.path.join('data/scenes', args.file))["grasp_iks"]
+            config.cfg.external_grasps = scene.env.robot.robot_kinematics.forward_kinematics_parallel(wrap_values(grasps))[:,7]
+            config.cfg.use_external_grasp = True
+            config.cfg.use_point_sdf = True
+            config.cfg.scene_file = ''
+            target_pt = points[target_mask][:,:3]
+            nontarget_pt = points[non_target_mask][:,:3]
+            nontarget_pt = scene.renderer.V[:3, :3].T.dot(nontarget_pt.T - scene.renderer.V[:3, [3]]).T  # base coordinate
+            target_pt = scene.renderer.V[:3, :3].T.dot(target_pt.T - scene.renderer.V[:3, [3]]).T  # base coordinate
+            target_pt = target_pt[np.random.choice(len(target_pt), 1024)]
+            nontarget_pt = nontarget_pt[np.random.choice(len(nontarget_pt), 3072)]
+            point_state = np.concatenate((target_pt, nontarget_pt), axis=0)
+            point_mask = np.concatenate((np.zeros((len(target_pt), 1)), np.ones((len(nontarget_pt), 1))), axis=0)
+            point_state = np.concatenate((point_state, point_mask), axis=-1)
+
+            scene = PlanningScene(config.cfg)
+            scene.env.clear()
+            scene.env.compute_sdf_from_points(nontarget_pt, point_state )
+            scene.reset(lazy=True)
+            info = scene.step()
             scene.fast_debug_vis(interact=int(args.vis), write_video=args.write_video,
-                        nonstop=True, collision_pt=args.vis_collision_pt, goal_set=args.vis_goalset)
+                            nonstop=True, collision_pt=args.vis_collision_pt, goal_set=args.vis_goalset)
+
     else:
+        # loop through experiment scenes
         scene_files = ['scene_{}'.format(i) for i in range(100)]
         for scene_file in scene_files:
             config.cfg.output_video_name = "output_videos/" + scene_file
