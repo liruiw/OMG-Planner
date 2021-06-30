@@ -74,7 +74,7 @@ python -m omg.core -v -f demo_scene_0         |  python -m omg.core -v -f demo_s
 :-------------------------:|:-------------------------:
 <img src="assets/demo_table.gif" width="300" height="225"/>  |  <img src="assets/demo_table2.gif" width="300" height="225"/>
 
-2. Run the planner from perception inputs.
+2. Run the planner from point cloud inputs.
 
 python -m omg.core -v -f demo_scene_0 -p         |  python -m omg.core -v -f demo_scene_1 -p
 :-------------------------:|:-------------------------:
