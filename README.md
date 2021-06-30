@@ -130,11 +130,11 @@ python -m bullet.panda_kitchen_scene -v -f kitchen0       |  python -m bullet.pa
 ├── ...
 ├── OMG
 |   |── data
-|   |   |── grasps      # grasps of the objects
-|   |   |── objects     # object meshes, sdf, urdf, etc
+|   |   |── grasps              # grasps of the objects
+|   |   |── objects             # object meshes, sdf, urdf, etc
 |   |   |── robots      # robot meshes, urdf, etc
 |   |   |── demonstrations  # saved images of trajectory
-|   |   └── scenes      # table top planning scenes
+|   |   └── scenes      # table-top planning scenes
 |   |── bullet
 |   |   |── panda_scene     # tabletop grasping environment
 |   |   |── panda_kitchen_scene # pick-and-place environment for the cabinet scene
@@ -150,11 +150,11 @@ python -m bullet.panda_kitchen_scene -v -f kitchen0       |  python -m bullet.pa
 |   |   |── online_learner  # goal selection mechanism
 |   |   |── optimizer       # chomp and chomp-project update
 |   |   └── ...
-|   |── real_world               # auto-encoder networks
+|   |── real_world               # real-world related code
 |   |   |── trial            # cabinet environment with an interface
 |   |   |── process_shape    # generate required file from obj
 |   |   └── ...
-|   |── ycb_render               # headless rendering code
+|   |── ycb_render               # rendering code
 |   |   |── robotPose            # panda-specific robot kinematics
 |   |   └── ...
 |   └── ...
