@@ -75,6 +75,7 @@ def place_target(
     vis_once=False,
     vis_collision=False,
     not_vis=False,
+    absolute=False
 ):
     """
     place a placement trajectory for a target object to a delta translation
@@ -103,7 +104,12 @@ def place_target(
         pack_pose(start_hand_pose), grasp_pose
     )  # object -> hand
     place_pose = grasp_pose.copy()
-    place_pose[:3] += np.array(place_translation)  #
+    if not absolute:
+        place_pose[:3] += np.array(place_translation)  #
+    
+    else:
+        place_pose[:3] = np.array(place_translation)
+        place_pose[2]  =  grasp_pose[2] # same height ...
     scene.env.update_pose(target_name, place_pose)
     vis = (
         input_func("visualize place pose? (y/n)")
@@ -140,7 +146,8 @@ def place_target(
         setattr(config.cfg, "use_standoff", dummy_standoff)
         end_hand_pose = robot.robot_kinematics.forward_kinematics_parallel(
             wrap_value(joint_trajectory_points[[standoff_idx], ...]),
-            base_link=config.cfg.base_link )[0][7]
+            base_link=config.cfg.base_link,
+        )[0][7]
 
         place_pose = compose_pose(pack_pose(end_hand_pose), target.rel_hand_pose)
         scene.env.update_pose(target_name, place_pose)  # update delta pose
@@ -260,35 +267,15 @@ def main():
     vis_once = False
     vis_collision = args.vis_collision
     write_video = args.write_video
-
+     
     config.cfg.goal_set_max_num = 100
     mkdir_if_missing('output_videos')
     config.cfg.output_video_name = "output_videos/" + args.file + ".avi"
     config.cfg.report_cost = False
     args.file = args.file + ".mat"
     file_name = config.cfg.root_dir + "real_world/" + args.script
-
-    if args.script is not None and os.path.exists(file_name):
-        text_file = open( file_name, "r" )  # 'script.txt'
-        lines = text_file.readlines()
-        target_names = [line[2:].strip() for line in lines if line.startswith("T")]
-        place_poses = [
-            [float(s) for s in line[2:].split(",")]
-            for line in lines
-            if line.startswith("P")
-        ]
-        end_confs = [
-            [float(s) for s in line[2:].split(",")]
-            for line in lines
-            if line.startswith("E")
-        ]
-        if len(end_confs) == 0:
-            end_confs = [" "]  # whatever
-        print("loaded one task script:", args.script)
-        print("target:", target_names)
-        print("place delta poses:", place_poses)
-        vis_once = lines[-1].strip() == "ONCE"
-
+    
+    vis_once = True
     config.cfg.traj_init  = "grasp"
     config.cfg.scene_file = ""
     config.cfg.grasp_optimize = False
@@ -336,13 +323,6 @@ def main():
         obj_pose = mat["object_poses"][files]
         print(object_lists)
 
-    else:
-        object_lists = ["021_bleach_cleanser"]
-        obj_pose.append(np.array(([0.61, -0.027, 0.161, 0, 0, 0, 1])))
-
-        obj_pose.append(np.array(([0.5, 0.0, -0.17, 0.0, 0.0, 0, 1])))
-        obj_pose.append(np.array(([0.5, 0.0, -0.17, 0.0, 0.0, 0.707, 0.707])))
-
     end_conf = np.array(
         [-0.05929, -1.6124, -0.197, -2.53, -0.0952, 1.678, 0.587, 0.0398, 0.0398]
     )
@@ -364,33 +344,34 @@ def main():
 
     while True:
         print_env_info(scene, scene.env, end_conf)
+        print('select the grasping target with pressing 9 and left mouse click and then quit with [esc]')
+        scene.fast_debug_vis(
+            interact=2,
+            collision_pt=vis_collision,
+            traj_type=0,
+            nonstop=vis_once,
+            write_video=write_video,
+        )
 
+        if scene.renderer.click_obj_name is None: break
+        print('mouse set target:', scene.renderer.click_obj_name)
         # grasp
-        if len(target_names) == 0:
-            target_ = input_func("enter target name or quit:  ")
-        elif target_script_idx < len(target_names):
-            target_ = target_names[target_script_idx]
-        else:
-            target_ = ""
-        if target_ == "quit":
-            break
+        target_ = scene.renderer.click_obj_name
 
         if target_ in scene.env.names:
             target = target_
             traj = plan_to_target(scene, start_conf, target)
             vis = input_func("visualize? (y/n)") if not vis_once else "y"
-            while vis == "y":
-                scene.fast_debug_vis(
+            scene.fast_debug_vis(
                     interact=1,
                     collision_pt=vis_collision,
                     nonstop=vis_once,
                     write_video=write_video,
                 )
-                if vis_once:
-                    break
-                vis = input_func("visualize? (y/n)")
+           
         else:
             print("Set target example: 004_sugar_box")
+
 
         # update objects
         object_pose_ = (
@@ -435,14 +416,19 @@ def main():
         else:
             print("Update config example: target_obj_collision=0.5")
 
+        print('select the placing target position with pressing 0 and left mouse click and then quit with [esc]')
+        scene.fast_debug_vis(
+            interact=2,
+            collision_pt=vis_collision,
+            traj_type=3,
+            nonstop=vis_once,
+            write_video=write_video,
+        )
+        if scene.renderer.world_place_point_pos.sum() == 0: break
         # placement
-        if len(place_poses) == 0:
-            place_pose_ = input_func("Place target delta translation: ").split(",")
-        elif place_script_idx < len(place_poses):
-            place_pose_ = place_poses[place_script_idx]
-        else:
-            place_pose_ = ""
-
+        place_pos = scene.renderer.world_place_point_pos[:,0]
+        place_pose_ = [place_pos[0], place_pos[1], place_pos[2], 1]
+        print('place_pose_:', place_pose_)
         if len(place_pose_) == 4 and target in scene.env.names:
             place_pose = np.array([float(item) for item in place_pose_[:3]])
             use_standoff = float(place_pose_[-1]) == 1.0
@@ -455,69 +441,14 @@ def main():
                 vis_collision=args.vis_collision,
                 vis_once=vis_once,
                 write_video=write_video,
+                absolute=True
             )
             if traj_ is not None:
                 traj = traj_
         else:
             print("Place example: -0.45,0,0,0")
-
-        # update start configuration
-        start_conf_ = (
-            input_func("update start configuration:  ").split(",")
-            if args.script is None
-            else []
-        )
-        if len(start_conf_) == 9:
-            start_conf = np.array([float(item) for item in start_conf_])
-        else:
-            print(
-                "Set start_config example: 0.5,-1.285,0.0,-2.356,0.0,1.571,0.785,0.04,0.04"
-            )
-
-        # update end configuration
-        if len(end_confs) == 0:
-            end_config = input_func("plan to fix end configuration:  ").split(",")
-        elif target_script_idx < len(end_confs):
-            end_config = end_confs[end_script_idx]
-        else:
-            end_config = ""
-        if len(end_config) == 9:
-            end_conf = np.array([float(item) for item in end_config])
-            start_conf_test = start_conf
-            if len(start_conf_test) != 9:
-                start_conf_test = np.array(
-                    [1.690, -1.562, -1.504, -1.93, -1.63, 1.57, 2.50, 0.04, 0.04]
-                )  #
-            plan_to_conf(
-                scene, start_conf_test, end_conf, disable_list=["004_sugar_box"]
-            )
-            vis = input_func("visualize? (y/n)") if not vis_once else "y"
-            while vis == "y":
-                scene.fast_debug_vis(
-                    interact=1,
-                    collision_pt=vis_collision,
-                    nonstop=vis_once,
-                    write_video=write_video,
-                )
-                if vis_once:
-                    break
-                vis = input_func("visualize? (y/n)")
-        else:
-            print(
-                "Set end_config example: -0.05929, -1.6124, -0.197, -2.53, -0.0952, 1.678, 0.587, 0.0398, 0.0398"
-            )
-
-        place_script_idx += 1
-        target_script_idx += 1
-        end_script_idx += 1
-        if (
-            args.script is not None
-            and target_script_idx >= len(target_names)
-            and place_script_idx >= len(place_poses)
-            and end_script_idx >= len(end_confs)
-        ):
-            break
-
+        break
+ 
 
 if __name__ == "__main__":
     main()

@@ -1,7 +1,7 @@
 # --------------------------------------------------------
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
- 
+
 import sys
 import ctypes
 
@@ -22,7 +22,6 @@ import numpy.random as npr
 import IPython
 import subprocess
 import multiprocessing
-
 import threading
 import platform
 
@@ -59,7 +58,6 @@ def load_texture_single(param):
     obj_path, texture_paths = param
     textures, is_colors, is_textures = [], [], []
     for texture_path in texture_paths:
-        # print('obj_path:', obj_path, texture_path)
         is_texture = False
         is_color = False
         if texture_path == "":
@@ -284,6 +282,8 @@ class YCBRenderer:
         robot="panda_arm",
         offset=True,
         reinit=False,
+        parallel_load_mesh=False,
+        parallel_textures=False
     ):
         self.render_marker = render_marker
         self.VAOs = []
@@ -301,12 +301,17 @@ class YCBRenderer:
         self.poses_trans = []
         self.poses_rot = []
         self.instances = []
-        self.parallel_textures = False
-        self.parallel_load_mesh = False
-
+        self.parallel_textures = parallel_textures
+        self.parallel_load_mesh = parallel_load_mesh
         self.robot = robot
         self._offset_map = None
-        if robot == "panda_arm" or robot == "baxter" and offset:
+        self.click_obj_idx = -1
+        self.world_place_point_pos = np.zeros([3, 1])
+        self.click_obj_name = None
+        self.click_pix_loc = None
+        self.place_click_pix_loc = None
+        self.click_pose = None
+        if (robot == "panda_arm" or robot == "baxter") and offset:
             self._offset_map = self.load_offset()
         if gpu_id == -1:
             from gibson2.core.render.mesh_renderer import CppMeshRenderer
@@ -651,7 +656,7 @@ class YCBRenderer:
             ):
                 GL.glPointSize(thickness)
                 if create_new:
-                    
+
                     VAO = GL.glGenVertexArrays(1)
                     GL.glBindVertexArray(VAO)
                     vertexData = []
@@ -714,7 +719,7 @@ class YCBRenderer:
                     GL.glBindVertexArray(0)
                     point_num = point.shape[0]
                     if pointVAOs is not None:
-                        pointVAOs.append((VAO, point_num))
+                        pointVAOs.append((VAO, point_num, thickness))
                     GL.glUseProgram(self.shaderProgram_simple_color)
                     GL.glBindVertexArray(VAO)
 
@@ -738,8 +743,10 @@ class YCBRenderer:
                     )
                     GL.glBindVertexArray(0)
                     GL.glUseProgram(0)
+                GL.glPointSize(1)
         if pointVAOs is not None:
-            for idx, (VAO, point_num) in enumerate(pointVAOs):
+            for idx, (VAO, point_num, point_thickness) in enumerate(pointVAOs):
+                GL.glPointSize(point_thickness)
                 GL.glUseProgram(self.shaderProgram_simple_color)
                 GL.glBindVertexArray(VAO)
 
@@ -763,7 +770,7 @@ class YCBRenderer:
                 )
                 GL.glBindVertexArray(0)
                 GL.glUseProgram(0)
-
+                GL.glPointSize(1)
         GL.glPointSize(1)
         return pointVAOs
 
@@ -1078,8 +1085,12 @@ class YCBRenderer:
         """
         try:
             cur_path = os.path.abspath(os.path.dirname(__file__))
-            offset_file = os.path.join(cur_path, "../data/robots/", "center_offset.txt")
-            model_file = os.path.join(cur_path, "../data/robots/", "models.txt")
+            relative_path = "../"
+            offset_file = os.path.join(cur_path, relative_path + "data/robots/", "center_offset.txt")
+            if not os.path.exists(offset_file):
+                relative_path = relative_path + "../"
+            offset_file = os.path.join(cur_path, relative_path + "data/robots/", "center_offset.txt")
+            model_file = os.path.join(cur_path, relative_path + "data/robots/", "models.txt")
             with open(model_file, "r+") as file:
                 content = file.readlines()
                 model_paths = [path.strip().split("/")[-1] for path in content]
@@ -1087,13 +1098,9 @@ class YCBRenderer:
             offset_map = {}
             for i in range(offset.shape[0]):
                 offset_map[model_paths[i]] = offset[i, :]
-                colors = ["red", "green", "yellow"]
-                for c in colors:
-                    color_name_ = model_paths[i].replace(".DAE", "_{}.DAE".format(c))
-                    offset_map[color_name_] = offset[i, :]
             return offset_map
         except:
-            print("offsets are not used")
+            print("renderer offsets are not used")
             return {}
 
     def parallel_assimp_load(self, mesh_files, scales):
@@ -1103,11 +1110,12 @@ class YCBRenderer:
 
         if len(mesh_files) == 0:
             return None, None
+
         if not self.parallel_load_mesh:
             scenes = [load_mesh_single([mesh_files[i], scales[i], self._offset_map])
-                    for i in range(len(mesh_files))]
+                        for i in range(len(mesh_files))]
         else:
-            p = multiprocessing.Pool(processes=4) 
+            p = multiprocessing.Pool(processes=4)
             scenes = p.map_async(
                 load_mesh_single,
                 [
@@ -1122,7 +1130,7 @@ class YCBRenderer:
         if self.parallel_textures:
             p =  multiprocessing.pool.ThreadPool(
                 processes=4
-            ) 
+            )
             textures = p.map_async(
                 load_texture_single,
                 [[mesh_files[i], scenes[i][-1]] for i in range(len(scenes))],
@@ -1149,7 +1157,7 @@ class YCBRenderer:
         if texture_paths is None:
             texture_paths = [""] * len(obj_paths)
         if colors is None:
-            colors = get_mask_colors(len(obj_paths))
+            colors = [(i,0,0) for i in range(len(obj_paths))] # get_mask_colors(len(obj_paths))
 
         self.colors.extend(colors)
         start_time = time.time()
@@ -1259,6 +1267,7 @@ class YCBRenderer:
             GL.glClearColor(0, 0, 0, 1)
         GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
         GL.glEnable(GL.GL_DEPTH_TEST)
+        # print(len(cls_indexes), len(self.pointVAOs), len(point_info))
 
         if draw_grid:
             if not hasattr(self, "grid"):
@@ -1281,6 +1290,7 @@ class YCBRenderer:
 
         size = 0
         color_cnt = 0
+
 
         for render_cnt in range(2):
             if point_capture_toggle and point_info is not None:
@@ -1600,19 +1610,21 @@ class YCBRenderer:
         if len(textures_) > 0:
             GL.glDeleteTextures(textures_)
         self.textures = []
-        self.objects = []   
-        self.faces = []   
-        self.poses_trans = []   
-        self.poses_rot = []   
+        self.objects = []
+        self.faces = []
+        self.poses_trans = []
+        self.poses_rot = []
         self.colors = []
 
     def clean_line_point(self):
         if self.lineVAOs is not None and len(self.lineVAOs) > 0:
             GL.glDeleteBuffers(len(self.lineVAOs), self.lineVAOs)
-            self.lineVAOs = [] 
+            self.lineVAOs = []
         if self.pointVAOs is not None and len(self.pointVAOs) > 0:
+            # print(len(self.pointVAOs), self.pointVAOs)
             GL.glDeleteBuffers(len(self.pointVAOs), self.pointVAOs)
-            self.pointVAOs = []   
+
+            self.pointVAOs = []
 
     def get_num_instances(self):
         return len(self.instances)
@@ -1649,6 +1661,7 @@ class YCBRenderer:
         a complicated visualization function
         """
         theta = 0
+        q = 0
         cam_x, cam_y, cam_z = cam_pos
         sample = []
         new_poses = []
@@ -1668,6 +1681,7 @@ class YCBRenderer:
         cam_pos = np.array([cam_x, cam_y, cam_z])
         self.set_camera(cam_pos, cam_pos * 2, [0, 1, 0])
         if V is not None:
+            V = np.array(V)
             self.V = V[...]
             cam_pos = V[:3, 3]
         self.set_light_pos(cam_pos)
@@ -1694,34 +1708,40 @@ class YCBRenderer:
         def change_dir(
             event, x, y, flags, param
         ):  # fix later to be a finalized version
-             
+
             if event == cv2.EVENT_LBUTTONDOWN:
                 mouse_events["_mouse_ix"], mouse_events["_mouse_iy"] = x, y
                 mouse_events["down"] = True
-               
+
             if event == cv2.EVENT_MBUTTONDOWN:
                 mouse_events["_mouse_ix"], mouse_events["_mouse_iy"] = x, y
                 mouse_events["shift"] = True
-             
+
+
+            if event == cv2.EVENT_LBUTTONDOWN  and q == 57:
+                self.click_pix_loc = x, y
+            if event == cv2.EVENT_LBUTTONDOWN  and q == 48:
+                self.place_click_pix_loc = x, y
+
             if event == cv2.EVENT_MOUSEMOVE  and (flags >= 8):
                 if mouse_events["down"] and flags < 15:
-                    dx = (x - mouse_events["_mouse_ix"]) / -7.0
-                    dy = (y - mouse_events["_mouse_iy"]) / -7.0
+                    dx = (x - mouse_events["_mouse_ix"]) / -50.0
+                    dy = (y - mouse_events["_mouse_iy"]) / -50.0
                     mouse_events["trackball"].on_mouse_drag(x, y, dx, dy)
                     update_dir()
-                
+
                 if mouse_events["down"] and flags > 15:
-                    dx = (x - mouse_events["_mouse_ix"]) / (-4000.0 / self.V[2, 3])
-                    dy = (y - mouse_events["_mouse_iy"]) / (-4000.0 / self.V[2, 3])
+                    dx = (x - mouse_events["_mouse_ix"]) / (-1000.0 / self.V[2, 3])
+                    dy = (y - mouse_events["_mouse_iy"]) / (-1000.0 / self.V[2, 3])
                     self.V[:3, 3] += 0.5 * np.array([0, 0, dx + dy])
                     mouse_events["view_origin"] += 0.5 * np.array(
                         [0, 0, dx + dy]
-                    )  # change                    
+                    )  # change
                     update_dir()
 
                 if mouse_events["shift"]:
-                    dx = (x - mouse_events["_mouse_ix"]) / (-4000.0 / self.V[2, 3])
-                    dy = (y - mouse_events["_mouse_iy"]) / (-4000.0 / self.V[2, 3])
+                    dx = (x - mouse_events["_mouse_ix"]) / (-8000.0 / self.V[2, 3])
+                    dy = (y - mouse_events["_mouse_iy"]) / (-8000.0 / self.V[2, 3])
                     self.V[:3, 3] += 0.5 * np.array([dx, dy, 0])
                     mouse_events["view_origin"] += 0.5 * np.array(
                         [-dx, dy, 0]
@@ -1732,7 +1752,7 @@ class YCBRenderer:
                 mouse_events["down"] = False
             if event == cv2.EVENT_MBUTTONUP:
                 mouse_events["shift"] = False
-          
+
         if interact > 0:
             cv2.namedWindow(window_name)
             cv2.setMouseCallback(window_name, change_dir)
@@ -1755,7 +1775,7 @@ class YCBRenderer:
         if "reset_line_point" in visualize_context:
             self.clean_line_point()
 
-        if "line" in visualize_context:
+        if "line" in visualize_context and visualize_context["line"] is not None:
             if "line_color" not in visualize_context:
                 visualize_context["line_color"] = [
                     [255, 0, 0] for _ in range(len(visualize_context["line"]))
@@ -1898,7 +1918,6 @@ class YCBRenderer:
                         pose[3:] = qmult(
                             axangle2quat([0, 0, 1], 5 / 180.0 * np.pi), pose[3:]
                         )
-                
 
             self.set_poses(poses)
             self.set_light_pos(new_cam_pos)
@@ -1932,28 +1951,56 @@ class YCBRenderer:
                 frame[0] = (frame[0] - frame[0].min()) / (
                     frame[0].max() - frame[0].min() + 1e-4
                 )
+            if img_toggle == 1:
+                color_list = get_mask_colors(len(self.objects))
+                obj_mask = (frames[1][...,:2].sum(-1) == 0)
+                masks = []
+                for i in range(len(self.objects)  ):
+                    mask = (np.abs(frames[1][...,-2] - i) < 1e-5) * obj_mask
+                    masks.append(mask)
+                for i, mask in enumerate(masks):
+                    frames[1][mask] = [color_list[i][0], color_list[i][1], color_list[i][2], 1]
 
             if "text" in visualize_context:  # annotate at top left
                 text = visualize_context["text"]
                 frame_ = frame[0].copy()
+                if "text_color" not in visualize_context:
+                    visualize_context["text_color"] = [
+                        [255, 0, 0] for _ in range(len(text))
+                    ]
                 for i, t in enumerate(text):
                     cv2.putText(
                         frame_,
                         t,
                         (0, 25 + i * 25),
                         cv2.FONT_HERSHEY_DUPLEX,
-                        0.7,
-                        [255, 255, 255],
+                        0.7 * self.width / 640.,
+                        visualize_context["text_color"][i][::-1],
                     )  # 0.7
                 frame[0] = frame_
 
             img = cv2.cvtColor(np.concatenate(frame, axis=1), cv2.COLOR_RGB2BGR)
+            if self.click_pix_loc is not None:
+                img = cv2.circle(img, self.click_pix_loc, 5, (255, 0, 0), 2)
+                # find out the object idx being clicked
+                obj_idx = int(np.round(frames[1][self.click_pix_loc[1], self.click_pix_loc[0]][-2]))
+                obj_name = self.objects[obj_idx].split('/')[-2]
+                self.click_obj_idx = obj_idx
+                self.click_obj_name = obj_name
+
+            if self.place_click_pix_loc is not None:
+                img = cv2.circle(img, self.place_click_pix_loc, 5, (0, 0, 255), 2)
+                point_pos = frames[3][self.place_click_pix_loc[1], self.place_click_pix_loc[0], :3].T
+                world_point_pos = self.V[:3, :3].T.dot(point_pos[:,None] - self.V[:3, [3]])
+                self.world_place_point_pos = world_point_pos
+
             if interact > 0:
                 cv2.imshow(window_name, img[:, :, ::-1])
-            if interact < 2:
-                break
-            if write_video_toggle:
-                if not video_writer:
+
+            if write_video_toggle or 'reuse_video_writer' in visualize_context or 'video' in visualize_context:
+                if 'reuse_video_writer' in visualize_context and hasattr(self, 'video_writer'):
+                    video_writer = self.video_writer
+                elif not video_writer:
                     print("writing video to test.avi")
                     video_writer = cv2.VideoWriter(
                         "test.avi",
@@ -1961,10 +2008,13 @@ class YCBRenderer:
                         10.0,
                         (self.width, self.height),
                     )
+                    self.video_writer = video_writer
                 video_writer.write(
                     np.clip(255 * img, 0, 255).astype(np.uint8)[..., [2, 1, 0]]
                 )
 
+            if interact < 2:
+                break
         return np.clip(255 * img, 0, 255).astype(np.uint8)
 
 def get_collision_points():
@@ -1972,6 +2022,7 @@ def get_collision_points():
     load collision points with the order of the link list and end effector
     """
     collision_pts = []
+    collision_pt_normals = []
     links = [
         "link1",
         "link2",
@@ -1986,14 +2037,20 @@ def get_collision_points():
     ]
     for i in range(len(links)):
         file = "../data/robots/{}.xyz".format(links[i])
+
         pts = np.loadtxt(file)[:, :3]
-        sample_pts = pts[random.sample(range(pts.shape[0]), 50)]
+        pt_normals =  0.03 * np.loadtxt(file)[:, 3:6]
+
+        index = random.sample(range(pts.shape[0]), 100)
+        sample_pts = pts[index]
+        sample_pts_normal = pt_normals[index]
         collision_pts.append(sample_pts)
-    return np.array(collision_pts)
+        collision_pt_normals.append(sample_pts_normal)
+    return np.array(collision_pts), np.array(collision_pt_normals)
 
 
 if __name__ == "__main__":
-    
+
     model_path = "panda_arm" if len(sys.argv) < 2 else sys.argv[1]
     joints = np.array([[0.0258, -1.3479, -0.0357, -2.3427,  0.0027, 1.5498,  0.6864, 0, 0.04, 0.04]]) * 180 / 3.14
 
@@ -2077,6 +2134,7 @@ if __name__ == "__main__":
             poses.append(np.hstack((trans, quat)))
 
     elif model_path == "points":
+        from robotPose.robot_pykdl import *
         robot = robot_kinematics(model_path)
         poses = []
         obj_paths = []
@@ -2121,13 +2179,16 @@ if __name__ == "__main__":
     renderer.set_camera_default()
     renderer.set_projection_matrix(640, 480, 525, 525, 319.5, 239.5, 0.1, 6)
     if model_path == "points":
-        points = get_collision_points()
+        points, points_normal = get_collision_points()
         pose = robot.forward_kinematics_parallel(joints)[0]
         r = pose[..., :3, :3]
         t = pose[..., :3, [3]]
         x = np.matmul(r, points.swapaxes(-1, -2)).swapaxes(-1, -2) + t.swapaxes(-1, -2)
         x = x.reshape([-1, 3])
-        x = np.concatenate([x] * 100, axis=0)
+        x = np.concatenate([x], axis=0)
+        x_normal = np.matmul(r, points_normal.swapaxes(-1, -2)).swapaxes(-1, -2)
+        x_normal = x_normal.reshape([-1, 3]) + x
+        x_normal = np.concatenate([x_normal], axis=0)
         renderer.vis(
             poses,
             range(len(poses)),
@@ -2136,7 +2197,11 @@ if __name__ == "__main__":
             visualize_context={
                 "white_bg": True,
                 "project_point": [x.T],
+                "line": [(x.T, x_normal.T)],
+                "line_color": [[0, 255, 0]],
                 "static_buffer": True,
+                "thickness": [2],
+                "point_size": [2],
             },
         )
     else:

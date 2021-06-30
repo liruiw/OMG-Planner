@@ -302,7 +302,7 @@ class PandaYCBEnv:
 
     def _check_safe_distance(self, xy, pos, obj_radius, radius):
         dist = np.linalg.norm(xy - pos, axis=-1)
-        safe_distance = obj_radius + radius -0.02 # avoid being too conservative
+        safe_distance = obj_radius + radius - 0.02 # avoid being too conservative
         return not np.any(dist < safe_distance)
 
     def _randomly_place_objects(self, urdfList, scale=1, poses=None):

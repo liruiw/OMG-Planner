@@ -88,8 +88,8 @@ def solve_one_pose_ik(input):
 
 class Planner(object):
     """
-    Planner class that plans a grasp trajectory 
-    Tricks such as standoff pregrasp, flip grasps are for real world experiments. 
+    Planner class that plans a grasp trajectory
+    Tricks such as standoff pregrasp, flip grasps are for real world experiments.
     """
 
     def __init__(self, env, traj, lazy=False):
@@ -100,8 +100,11 @@ class Planner(object):
         self.cost = Cost(env)
         self.optim = Optimizer(env, self.cost)
         self.lazy = lazy
- 
+
         if self.cfg.goal_set_proj:
+            if hasattr(self.cfg, 'use_external_grasp') and self.cfg.use_external_grasp:
+                self.load_goal_from_external(self.cfg.external_grasps)
+
             if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
                 self.load_grasp_set(env)
                 self.setup_goal_set(env)
@@ -116,11 +119,12 @@ class Planner(object):
         self.info = []
         self.ik_cache = []
 
-    # update planner according to the env
+    # update planner based on the env
     def update(self, env, traj):
         self.cfg = config.cfg
         self.env = env
         self.traj = traj
+
         # update cost
         self.cost.env = env
         self.cost.cfg = config.cfg
@@ -132,7 +136,9 @@ class Planner(object):
 
         # load grasps if needed
         if self.cfg.goal_set_proj:
-            if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
+            if hasattr(self.cfg, 'use_external_grasp') and self.cfg.use_external_grasp:
+                self.load_goal_from_external(self.cfg.external_grasps)
+            elif self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
                 self.load_grasp_set(env)
                 self.setup_goal_set(env)
             else:
@@ -150,20 +156,34 @@ class Planner(object):
         """
         Load saved goals from scene file, standoff is not used.
         """
-        file = self.cfg.scene_path + self.cfg.scene_file + ".mat"
-        if self.cfg.traj_init == "scene":
+        file = os.path.join(self.cfg.scene_path, self.cfg.scene_file + ".mat")
+        if self.cfg.traj_init == "scene" and not hasattr(self.cfg, 'force_standoff'):
             self.cfg.use_standoff = False
+
         if os.path.exists(file):
             scene = sio.loadmat(file)
             self.cfg.goal_set_max_num = len(scene["goals"])
             indexes = range(self.cfg.goal_set_max_num)
             self.traj.goal_set = scene["goals"][indexes]
+            self.env.objects[self.env.target_idx].reach_grasps = scene["reach_grasps"][indexes]
             if "grasp_qualities" in scene:
                 self.traj.goal_quality = scene["grasp_qualities"][0][indexes]
                 self.traj.goal_potentials = scene["grasp_potentials"][0][indexes]
             else:
                 self.traj.goal_quality = np.zeros(self.cfg.goal_set_max_num)
                 self.traj.goal_potentials = np.zeros(self.cfg.goal_set_max_num)
+
+    def load_goal_from_external(self, grasp_list):
+        """
+        Load grasps detected by other methods.
+        """
+
+        """ external grasps poses """
+        target_obj = self.env.objects[self.env.target_idx]
+        pose_grasp = np.array(grasp_list)
+        self.solve_and_process_ik(target_obj, pose_grasp, False, obj_coord=False)
+        target_obj.compute_grasp = True
+        self.setup_goal_set(self.env ) #
 
     def grasp_init(self, env=None):
         """
@@ -192,9 +212,9 @@ class Planner(object):
             elif self.cfg.goal_idx == -1:  # initial
                 costs = (
                     self.traj.goal_potentials + self.cfg.dist_eps * proj_dist
-                )    
+                )
                 self.traj.goal_idx = np.argmin(costs)
- 
+
             else:
                 self.traj.goal_idx = 0
 
@@ -203,7 +223,7 @@ class Planner(object):
 
             self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
             self.traj.interpolate_waypoints()
-       
+
 
     def flip_grasp(self, old_grasps):
         """
@@ -218,8 +238,65 @@ class Planner(object):
         )
         return grasps, limits
 
+    def solve_and_process_ik(self, target_obj, pose_grasp, z_upsample, obj_coord=True):
+        env = self.env
+        target_obj.reach_grasps, target_obj.grasps = self.solve_goal_set_ik(
+            target_obj, env, pose_grasp, z_upsample=z_upsample, y_upsample=self.cfg.y_upsample, obj_coord=obj_coord
+        )
+        target_obj.grasp_potentials = []
+
+        if (
+            self.cfg.augment_flip_grasp
+            and not target_obj.attached
+            and len(target_obj.reach_grasps) > 0
+        ):
+            """ add augmenting symmetric grasps in C space """
+            flip_grasps, flip_mask = self.flip_grasp(target_obj.grasps)
+            flip_reach, flip_reach_mask = self.flip_grasp( target_obj.reach_grasps )
+            mask = flip_mask
+            target_obj.reach_grasps.extend(list(flip_reach[mask]))
+            target_obj.grasps.extend(list(flip_grasps[mask]))
+        target_obj.reach_grasps = np.array(target_obj.reach_grasps)
+        target_obj.grasps = np.array(target_obj.grasps)
+
+        if (
+            self.cfg.remove_flip_grasp
+            and len(target_obj.reach_grasps) > 0
+            and not target_obj.attached
+        ):
+            """ remove grasps in task space that have large rotation change """
+            start_hand_pose =  self.env.robot.robot_kinematics.forward_kinematics_parallel(
+                                wrap_value(self.traj.start)[None] )[0][7]
+
+            if self.cfg.use_standoff:
+                n = 5
+                interpolated_traj = multi_interpolate_waypoints(
+                    self.traj.start, np.array(target_obj.reach_grasps[:, -1]), n, 9, "linear" )
+                target_hand_pose =  self.env.robot.robot_kinematics.forward_kinematics_parallel(
+                                    wrap_values(interpolated_traj))[:, 7]
+
+                target_hand_pose = target_hand_pose.reshape(-1, n, 4, 4)
+            else:
+                target_hand_pose =  self.env.robot.robot_kinematics.forward_kinematics_parallel(
+                                    wrap_values(np.array(target_obj.grasps)))[:, 7]
+
+            if len(target_hand_pose.shape) == 3:
+                target_hand_pose = target_hand_pose[:,None]
+
+            # difference angle
+            R_diff = np.matmul(target_hand_pose[..., :3, :3], start_hand_pose[:3,:3].transpose(1,0))
+            angle = np.abs(np.arccos((np.trace(R_diff, axis1=2, axis2=3) - 1 ) /  2))
+            angle = angle * 180 / np.pi
+            rot_masks = angle > self.cfg.target_hand_filter_angle
+            z = target_hand_pose[..., :3, 0] / np.linalg.norm(target_hand_pose[..., :3, 0], axis=-1, keepdims=True)
+            downward_masks = z[:,:,-1] < -0.3
+            masks = (rot_masks + downward_masks).sum(-1) > 0
+            target_obj.reach_grasps = list(target_obj.reach_grasps[~masks])
+            target_obj.grasps = list(target_obj.grasps[~masks])
+
+
     def solve_goal_set_ik(
-        self, target_obj, env, pose_grasp, one_trial=False, z_upsample=False, y_upsample=False
+        self, target_obj, env, pose_grasp, one_trial=False, z_upsample=False, y_upsample=False, obj_coord=True
     ):
         """
         Solve the IKs to the goals
@@ -241,7 +318,10 @@ class Planner(object):
             seeds = np.concatenate([init_seed[None, :], anchor_seeds[:, :7]], axis=0)
 
         """ IK prep """
-        pose_grasp_global = np.matmul(object_pose, pose_grasp)  # gripper -> object
+        if obj_coord:
+            pose_grasp_global = np.matmul(object_pose, pose_grasp)  # gripper -> object
+        else:
+            pose_grasp_global = pose_grasp
 
         if z_upsample:
             # Added upright/gravity (support from base for placement) upsampling by object global z rotation
@@ -254,33 +334,30 @@ class Planner(object):
             )  # translate to object origin
             pose_grasp_global = np.matmul(global_rot_z, pose_grasp_global)  # rotate
             pose_grasp_global[:, :3, 3] += translation  # translate back
- 
+
         if y_upsample:
-            # Added upsampling by local y rotation around finger antipodal contact 
+            # Added upsampling by local y rotation around finger antipodal contact
             bin_num = 10
             global_rot_y = np.linspace(-np.pi / 4, np.pi / 4, bin_num)
             global_rot_y = np.stack([rotY(y_ang) for y_ang in global_rot_y], axis=0)
             finger_translation = pose_grasp_global[:, :3, :3].dot(np.array([0, 0, 0.13])) + pose_grasp_global[:, :3, 3]
             local_rotation = np.matmul(pose_grasp_global[:, :3, :3], global_rot_y[:, None, :3, :3])
             delta_translation  = local_rotation.dot(np.array([0, 0, 0.13]))
-            pose_grasp_global = np.tile(pose_grasp_global[:,None], (1, bin_num, 1, 1)) 
+            pose_grasp_global = np.tile(pose_grasp_global[:,None], (1, bin_num, 1, 1))
             pose_grasp_global[:,:,:3,3]  = (finger_translation[None] - delta_translation).transpose((1,0,2))
-            pose_grasp_global[:,:,:3,:3] = local_rotation.transpose((1,0,2,3)) 
+            pose_grasp_global[:,:,:3,:3] = local_rotation.transpose((1,0,2,3))
             pose_grasp_global = pose_grasp_global.reshape(-1, 4, 4)
- 
+
         # standoff
         pose_standoff = np.tile(np.eye(4), (reach_tail_len, 1, 1, 1))
         if self.cfg.use_standoff:
-            pose_standoff[:, 0, 2, 3] = (
-                -1
-                * self.cfg.standoff_dist
-                * np.linspace(0, 1, reach_tail_len, endpoint=False)
-            )
+            pose_standoff[:, 0, 2, 3] = -self.cfg.standoff_dist * np.linspace(0, 1, reach_tail_len, endpoint=False)
+
         standoff_grasp_global = np.matmul(pose_grasp_global, pose_standoff)
         parallel = self.cfg.ik_parallel
         seeds_ = seeds[:]
 
-        if not parallel:
+        if not parallel: # solve IK in sequence
             hand_center = np.empty((0, 3))
             for grasp_idx in range(pose_grasp_global.shape[0]):
                 end_pose = pack_pose(pose_grasp_global[grasp_idx])
@@ -290,14 +367,9 @@ class Planner(object):
                     and self.cfg.increment_iks
                 ):  # augment
                     dists = np.linalg.norm(end_pose[:3] - hand_center, axis=-1)
-                    closest_idx, _ = np.argsort(dists)[:5], np.amin(dists)
+                    closest_idx, _ = np.argsort(dists)[:1], np.amin(dists)
                     seeds_ = np.concatenate(
-                        [
-                            seeds,
-                            np.array(standoff_goal_set)[closest_idx, :7].reshape(-1, 7),
-                        ],
-                        axis=0,
-                    )
+                            [seeds, np.array(standoff_goal_set)[closest_idx, :7].reshape(-1, 7) ], axis=0 )
 
                 standoff_pose = standoff_grasp_global[:, grasp_idx]
                 reach_goal_set_i, standoff_goal_set_i, any_ik = solve_one_pose_ik(
@@ -319,16 +391,11 @@ class Planner(object):
                 if not any_ik:
                     cnt += 1
                 else:
-                    hand_center = np.concatenate(
-                        [
-                            hand_center,
-                            np.tile(end_pose[:3], (len(standoff_goal_set_i), 1)),
-                        ],
-                        axis=0,
-                    )
+                    hand_center = np.concatenate([hand_center,
+                                np.tile(end_pose[:3], (len(standoff_goal_set_i), 1)) ], axis=0 )
 
         else:
-            processes = 4 # multiprocessing.cpu_count() // 2
+            processes = 4
             reach_goal_set = (
                 np.zeros([0, self.cfg.reach_tail_length, 9])
                 if self.cfg.use_standoff
@@ -336,8 +403,8 @@ class Planner(object):
             )
             standoff_goal_set = np.zeros([0, 9])
             any_ik, cnt = [], 0
-            p = multiprocessing.Pool(processes=processes)     
-             
+            p = multiprocessing.Pool(processes=processes)
+
             num = pose_grasp_global.shape[0]
             for i in range(0, num, processes):
                 param_list = [
@@ -360,35 +427,23 @@ class Planner(object):
 
                 if np.sum([s[2] for s in res]) > 0:
                     reach_goal_set = np.concatenate(
-                        (
-                            reach_goal_set,
-                            np.concatenate(
-                                [np.array(s[0]) for s in res if len(s[0]) > 0],
-                                axis=0,
-                            ),
-                        ),
-                        axis=0,
-                    )
+                        ( reach_goal_set,
+                           np.concatenate( [np.array(s[0]) for s in res if len(s[0]) > 0], axis=0)), axis=0)
                     standoff_goal_set = np.concatenate(
-                        (
-                            standoff_goal_set,
-                            np.concatenate(
-                                [s[1] for s in res if len(s[1]) > 0], axis=0
-                            ),
-                        ),
+                        ( standoff_goal_set,
+                          np.concatenate( [s[1] for s in res if len(s[1]) > 0], axis=0 ), ),
                         axis=0,
                     )
 
                 if self.cfg.increment_iks:
                     max_index = np.random.choice(
                         np.arange(len(standoff_goal_set)),
-                        min(len(standoff_goal_set), 20),
+                        min(len(standoff_goal_set), 10),
                     )
-                    seeds_ = np.concatenate(
-                        (seeds, standoff_goal_set[max_index, :7])
-                    )
+                    seeds_ = np.concatenate( (seeds, standoff_goal_set[max_index, :7]) )
             p.terminate()
             cnt = np.sum(1 - np.array(any_ik))
+
         if not self.cfg.silent:
             print(
             "{} IK init time: {:.3f}, failed_ik: {}, goal set num: {}/{}".format(
@@ -406,6 +461,7 @@ class Planner(object):
         Example to load precomputed grasps for YCB Objects.
         """
         for i, target_obj in enumerate(env.objects):
+
             if target_obj.compute_grasp and (i == env.target_idx or not self.lazy):
 
                 if not target_obj.attached:
@@ -440,78 +496,10 @@ class Planner(object):
                     z_upsample = False
 
                 else:  # placement
-                    pose_grasp = np.linalg.inv(unpack_pose(target_obj.rel_hand_pose))[
-                        None
-                    ]
-                    z_upsample = True
+                    pose_grasp = np.linalg.inv(unpack_pose(target_obj.rel_hand_pose))[ None ]
+                    z_upsample = self.cfg.z_upsample
 
-                target_obj.reach_grasps, target_obj.grasps = self.solve_goal_set_ik(
-                    target_obj, env, pose_grasp, z_upsample=z_upsample, y_upsample=self.cfg.y_upsample
-                )
-                target_obj.grasp_potentials = []
-
-                if (
-                    self.cfg.augment_flip_grasp
-                    and not target_obj.attached
-                    and len(target_obj.reach_grasps) > 0
-                ):
-                    """ add augmenting symmetry grasps in C space """
-                    flip_grasps, flip_mask = self.flip_grasp(target_obj.grasps)
-                    flip_reach, flip_reach_mask = self.flip_grasp(
-                        target_obj.reach_grasps
-                    )
-                    mask = flip_mask
-                    target_obj.reach_grasps.extend(list(flip_reach[mask]))
-                    target_obj.grasps.extend(list(flip_grasps[mask]))
-                target_obj.reach_grasps = np.array(target_obj.reach_grasps)
-                target_obj.grasps = np.array(target_obj.grasps)
-
-                if (
-                    self.cfg.remove_flip_grasp
-                    and len(target_obj.reach_grasps) > 0
-                    and not target_obj.attached
-                ):
-                    """ remove grasps in task space that have large rotation change """
-                    start_hand_pose = (
-                        self.env.robot.robot_kinematics.forward_kinematics_parallel(
-                            wrap_value(self.traj.start)[None]
-                        )[0][7]
-                    )
-                    if self.cfg.use_standoff:
-                        n = 5
-                        interpolated_traj = multi_interpolate_waypoints(
-                            self.traj.start,
-                            np.array(target_obj.reach_grasps[:, -1]),
-                            n,
-                            9,
-                            "linear",
-                        )
-                        target_hand_pose = (
-                            self.env.robot.robot_kinematics.forward_kinematics_parallel(
-                                wrap_values(interpolated_traj)
-                            )[:, 7]
-                        )
-                        target_hand_pose = target_hand_pose.reshape(-1, n, 4, 4)
-                    else:
-                        target_hand_pose = (
-                            self.env.robot.robot_kinematics.forward_kinematics_parallel(
-                                wrap_values(np.array(target_obj.grasps))
-                            )[:, 7]
-                        )
-
-                    if len(target_hand_pose.shape) == 3:
-                        target_hand_pose = target_hand_pose[:,None]
-
-                    # difference angle
-                    R_diff = np.matmul(target_hand_pose[..., :3, :3], start_hand_pose[:3,:3].transpose(1,0))
-                    angle = np.abs(np.arccos((np.trace(R_diff, axis1=2, axis2=3) - 1 ) /  2))
-                    angle = angle * 180 / np.pi 
-                    rot_masks = angle > self.cfg.target_hand_filter_angle
-                    z = target_hand_pose[..., :3, 0] / np.linalg.norm(target_hand_pose[..., :3, 0], axis=-1, keepdims=True)
-                    downward_masks = z[:,:,-1] < -0.3
-                    masks = (rot_masks + downward_masks).sum(-1) > 0
-                    target_obj.reach_grasps = list(target_obj.reach_grasps[~masks])
-                    target_obj.grasps = list(target_obj.grasps[~masks])
+                self.solve_and_process_ik(target_obj, pose_grasp, z_upsample)
 
     def setup_goal_set(self, env, filter_collision=True, filter_diversity=True):
         """
@@ -544,9 +532,13 @@ class Planner(object):
                     new_goal_set = []
                     ik_goal_num = len(goal_set)
                     goal_set = [goal_set[idx] for idx in collision_free[0]]
-                    reach_goal_set = [reach_goal_set[idx] for idx in collision_free[0]]
+                    try:
+                        reach_goal_set = [reach_goal_set[idx] for idx in collision_free[0]]
+                    except:
+                        pass
                     potentials = potentials[collision_free[0]]
                     vis_points = vis_points[collision_free[0]]
+
 
                 """ diversity """
                 diverse = False
@@ -575,8 +567,7 @@ class Planner(object):
                 if num > 0:
                     sample = True
                     sample_goals = np.random.choice(
-                        indexes, min(num, self.cfg.goal_set_max_num), replace=False
-                    )
+                        indexes, min(num, self.cfg.goal_set_max_num), replace=False )
 
                     target_obj.grasps = [goal_set[int(idx)] for idx in sample_goals]
                     target_obj.reach_grasps = [
@@ -607,9 +598,10 @@ class Planner(object):
                     target_obj.grasp_vis_points = []
             target_obj.compute_grasp = False
 
+
     def plan(self, traj):
         """
-        Run chomp optimizer to do trajectory optmization
+        Run optimizer to do trajectory optmization
         """
 
         self.history_trajectories = [np.copy(traj.data)]
@@ -623,12 +615,12 @@ class Planner(object):
                 start_time = time.time()
                 if (
                     self.cfg.goal_set_proj
-                    and alg_switch and t < self.cfg.optim_steps 
+                    and alg_switch and t < self.cfg.optim_steps
                 ):
                     self.learner.update_goal()
                     self.selected_goals.append(self.traj.goal_idx)
 
-                self.info.append(self.optim.optimize(traj, force_update=True))  
+                self.info.append(self.optim.optimize(traj, force_update=True))
                 self.history_trajectories.append(np.copy(traj.data))
 
                 if self.cfg.report_time:
@@ -636,23 +628,24 @@ class Planner(object):
 
                 if self.info[-1]["terminate"] and t > 0:
                     break
- 
+                if self.cfg.timeout != -1 and time.time() - start_time_ > self.cfg.timeout and t > 0:
+                    break
+
             # compute information for the final
             if not self.info[-1]["terminate"]:
-                self.info.append(self.optim.optimize(traj, info_only=True))  
+                self.info.append(self.optim.optimize(traj, info_only=True))
             else:
                 del self.history_trajectories[-1]
-
             plan_time = time.time() - start_time_
+
             res = (
                 "SUCCESS BE GENTLE"
                 if self.info[-1]["terminate"]
                 else "FAIL DONT EXECUTE"
             )
             if not self.cfg.silent:
-                print(
-                "planning time: {:.3f} PLAN {} Length: {}".format(
-                    plan_time, res, len(self.history_trajectories[-1])
+                print( "planning time: {:.3f} PLAN {} Length: {}".format(
+                        plan_time, res, len(self.history_trajectories[-1])
                 )
             )
             self.info[-1]["time"] = plan_time

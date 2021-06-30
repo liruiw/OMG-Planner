@@ -3,7 +3,7 @@
 # --------------------------------------------------------
 
 from . import _init_paths
-from ycb_render.ycb_renderer import YCBRenderer
+from ycb_render.ycb_renderer import YCBRenderer # comment
 from ycb_render.robotPose.robot_pykdl import *
 from . import config
 
@@ -14,6 +14,7 @@ import time
 from .util import *
 from .sdf_tools import *
 import torch
+
 
 torch.no_grad()
 import IPython
@@ -96,21 +97,20 @@ class Model(object):
         self.pose = pack_pose(self.pose_mat)
         self.type = target
         self.model_name = path.split("/")[-2]
+        self.id = id
         if name is None:
             self.name = self.model_name
         else:
             self.name = name
-        self.id = id
-        self.extents = np.loadtxt(path + "model_normalized.extent.txt").astype(
-            np.float32
-        )
-        self.resize = (
-            config.cfg.target_size if target else config.cfg.obstacle_size
-        )
+        try:
+            self.extents = np.loadtxt(path + "model_normalized.extent.txt").astype(np.float32)
+            self.resize  = config.cfg.target_size if target else config.cfg.obstacle_size
+            self.sdf = SignedDensityField.from_pth(path + "model_normalized_chomp.pth")  #
+            self.sdf.resize(config.cfg.target_size)
+            self.sdf.data[self.sdf.data < 0] *= config.cfg.penalize_constant
+        except:
+            pass
 
-        self.sdf = SignedDensityField.from_pth(path + "model_normalized_chomp.pth")  #
-        self.sdf.resize(config.cfg.target_size)
-        self.sdf.data[self.sdf.data < 0] *= config.cfg.penalize_constant
         self.compute_grasp = compute_grasp
         self.grasps = []
         self.reach_grasps = []
@@ -119,6 +119,7 @@ class Model(object):
         self.grasp_vis_points = []
         self.attached = False
         self.rel_hand_pose = None
+        self.vis_points = None
         self.grasps_poses = []
         if self.name.startswith("0"):
             self.points = np.loadtxt(path + "model_normalized.xyz")
@@ -205,31 +206,32 @@ class Robot(object):
         hand_pt_num = int(num / 4)
         hand_points = hand_points[0][random.sample(range(num), hand_pt_num)]
         attached_pt_num = num - hand_pt_num
+        if hasattr(obj, 'points'):
+            # print('add object points in hand collision avoidance')
+            attached_hand_obj_points = obj.points[
+                random.sample(range(200), attached_pt_num)
+            ]
+            attached_lf_obj_points = obj.points[random.sample(range(200, 350), num)]
+            attached_rf_obj_points = obj.points[random.sample(range(350, 500), num)]
 
-        attached_hand_obj_points = obj.points[
-            random.sample(range(200), attached_pt_num)
-        ]
-        attached_lf_obj_points = obj.points[random.sample(range(200, 350), num)]
-        attached_rf_obj_points = obj.points[random.sample(range(350, 500), num)]
+            attached_obj_hand_points = (
+                np.matmul(hand_pose[:3, :3], attached_hand_obj_points[:, :3].T)
+                + hand_pose[:3, [3]]
+            ).T
+            attached_obj_left_points = (
+                np.matmul(lf_pose[:3, :3], attached_lf_obj_points[:, :3].T)
+                + lf_pose[:3, [3]]
+            ).T
+            attached_obj_right_points = (
+                np.matmul(rf_pose[:3, :3], attached_rf_obj_points[:, :3].T)
+                + rf_pose[:3, [3]]
+            ).T
 
-        attached_obj_hand_points = (
-            np.matmul(hand_pose[:3, :3], attached_hand_obj_points[:, :3].T)
-            + hand_pose[:3, [3]]
-        ).T
-        attached_obj_left_points = (
-            np.matmul(lf_pose[:3, :3], attached_lf_obj_points[:, :3].T)
-            + lf_pose[:3, [3]]
-        ).T
-        attached_obj_right_points = (
-            np.matmul(rf_pose[:3, :3], attached_rf_obj_points[:, :3].T)
-            + rf_pose[:3, [3]]
-        ).T
-
-        self.collision_points[-3] = np.concatenate(
-            [hand_points, attached_obj_hand_points], axis=0
-        )  # for hand
-        self.collision_points[-2] = attached_obj_left_points  # for left finger
-        self.collision_points[-1] = attached_obj_right_points  # for right finger
+            self.collision_points[-3] = np.concatenate(
+                [hand_points, attached_obj_hand_points], axis=0
+            )
+            self.collision_points[-2] = attached_obj_left_points
+            self.collision_points[-1] = attached_obj_right_points
 
     def reset_hand_points(self):
         """
@@ -272,7 +274,7 @@ class Env(object):
 
             self.indexes = list(range(len(self.names)))
             self.combine_sdfs()
-            if 'target_name' in scene: 
+            if 'target_name' in scene:
                 self.set_target(scene['target_name'][0])
 
     def add_plane(self, trans, quat):
@@ -362,15 +364,12 @@ class Env(object):
     # combine sdfs of all the objects in the env
     def combine_sdfs(self):
         s = time.time()
-        num = len(self.objects)
-        if num > 0:
-            max_shape = np.array([obj.sdf.data.shape for obj in self.objects]).max(axis=0)
-        else:
-            max_shape = np.array([10, 10, 10])
+        max_shape = np.array([obj.sdf.data.shape for obj in self.objects]).max(axis=0)
         if config.cfg.report_time:
             print("sdf max shape %d %d %d" % (max_shape[0], max_shape[1], max_shape[2]))
+        num = len(self.objects)
         self.sdf_torch = torch.ones(
-            (num, max_shape[0], max_shape[1], max_shape[2]), dtype=torch.float32
+            (num, max_shape[0], max_shape[1], max_shape[2]), dtype=torch.float32 # float32
         ).cuda()
         self.sdf_limits = np.zeros((num, 10), dtype=np.float32)
         for i in range(num):
@@ -410,6 +409,51 @@ class Env(object):
             print("combine sdf time {:.3f}".format(time.time() - s))
         self.sdf_limits = torch.from_numpy(self.sdf_limits).cuda()
 
+class PointEnv(Env):
+    """
+    Environment class for point cloud SDF
+    """
+
+    def __init__(self, cfg):
+        super(PointEnv, self).__init__(cfg)
+        self.env_points = None
+        self.env_sdf = None
+        self.grid_resolution = 0.02
+        self.workspace_bounds = None
+        self.workspace_points = None
+
+    def compute_sdf_from_points(self, points, vis_points=None, vis=False):
+        """
+        Environment perceived points as N x 3 in the robot base coordinates
+        we use nearest point distance to represent SDF for simplicity
+        """
+        self.env_points = points
+
+        if points.shape[0] == 0:
+            points = np.ones((2, 3)) * 3
+        self.workspace_bounds = np.stack((points.min(0), points.max(0)), axis=1)
+        margin = 0.24
+        self.workspace_points = np.array(np.meshgrid(
+                                np.arange(self.workspace_bounds[0][0] - margin, self.workspace_bounds[0][1] + margin, self.grid_resolution),
+                                np.arange(self.workspace_bounds[1][0] - margin, self.workspace_bounds[1][1] + margin, self.grid_resolution),
+                                np.arange(self.workspace_bounds[2][0] - margin, self.workspace_bounds[2][1] + margin, self.grid_resolution),
+                                indexing='ij'))
+        print('computing SDF from point cloud ...', self.workspace_bounds, self.workspace_points.shape)
+        self.add_object('perception/env_points', [0,0,0], [1,0,0,0], insert=False, compute_grasp=False, model_name=None )
+
+        # set sdf manually
+        workspace_points_flattened = self.workspace_points.reshape((3, -1)).T
+        s = time.time()
+        self.kdtree = cKDTree(points)
+        dists, closest_idx = self.kdtree.query(workspace_points_flattened)
+
+        print('process point SDF time:', time.time() - s)
+        self.objects[0].sdf = SignedDensityField(dists.reshape(self.workspace_points.shape[1:]), self.workspace_bounds[:,0] - margin, self.grid_resolution)
+        self.objects[0].extents = self.workspace_bounds[0] - self.workspace_bounds[1]
+        self.objects[0].resize = 1.
+        self.objects[0].vis_points = vis_points.T if vis_points is not None else points.T
+        print('vis point shape:', self.objects[0].vis_points.shape)
+        self.combine_sdfs()
 
 class PlanningScene(object):
     """
@@ -420,7 +464,7 @@ class PlanningScene(object):
         self.traj = Trajectory(config.cfg.timesteps)
         print("Setting up env...")
         start_time = time.time()
-        self.env = Env(config.cfg)
+        self.env = Env(config.cfg) if not cfg.use_point_sdf else PointEnv(config.cfg)
         print("env init time: {:.3f}".format(time.time() - start_time))
         config.cfg.ROBOT = self.env.robot.robot_kinematics  # hack for parallel ik
         if len(config.cfg.scene_file) > 0:
@@ -439,8 +483,6 @@ class PlanningScene(object):
         if config.cfg.vis and not hasattr(self, "renderer"):
             self.setup_renderer()
 
-
-
     def fast_debug_vis(
         self,
         traj=None,
@@ -454,18 +496,24 @@ class PlanningScene(object):
         """
         Debug and trajectory and related information
         """
-        def fast_vis_simple(poses, cls_indexes, interact):
+        def fast_vis_simple(poses, cls_indexes, obj_vis_points, interact):
+            visualize_context={"white_bg": True}
+            if len(obj_vis_points) > 0:
+                visualize_context["project_point"] = obj_vis_points
             return self.renderer.vis(
                             poses,
                             cls_indexes,
                             interact=interact,
-                            visualize_context={"white_bg": True},
+                            visualize_context=visualize_context,
                             cam_pos=self.cam_pos,
                             V=self.cam_V,
                             shifted_pose=np.eye(4),
                         )
 
-        def fast_vis_end(poses, cls_indexes, nonstop):
+        def fast_vis_end(poses, cls_indexes, nonstop, obj_vis_points):
+            visualize_context={"white_bg": True}
+            if len(obj_vis_points) > 0:
+                visualize_context["project_point"] = obj_vis_points
             return  self.renderer.vis(
                     poses,
                     cls_indexes,
@@ -473,21 +521,27 @@ class PlanningScene(object):
                     cam_pos=self.cam_pos,
                     V=self.cam_V,
                     shifted_pose=np.eye(4),
-                    visualize_context={"white_bg": True},
+                    visualize_context=visualize_context,
                 )
 
-        def fast_vis_collision(poses, cls_indexes, i, collision_pts, interact):
-            vis_pt = collision_pts[i-1,:,:,:3].reshape(-1, 3).T  #-1
-            vis_color = collision_pts[i-1,:,:,6:9].reshape(-1, 3).astype(np.int) # 
-            vis_pt_with_grad = -collision_pts[i-1,:,:,9:12].reshape(-1, 3).T * 0.02 + vis_pt #            
+        def fast_vis_collision(poses, cls_indexes, i, collision_pts, obj_vis_points, interact):
+            vis_pt = [collision_pts[i-1,:,:,:3].reshape(-1, 3).T]  #-1
+            vis_color = [collision_pts[i-1,:,:,6:9].reshape(-1, 3).astype(np.int)] #
+            point_size = [3]
+            if len(obj_vis_points) > 0 and len(obj_vis_points[0]) > 0:
+                vis_pt.extend(obj_vis_points)
+                vis_color.append([255, 0, 0])
+                point_size.append(3)
+
+            vis_pt_with_grad = -collision_pts[i-1,:,:,9:12].reshape(-1, 3).T * 0.4 + vis_pt[0] #
             return self.renderer.vis(
                             poses,
                             cls_indexes,
                             interact=interact,
-                            visualize_context={"line":[(vis_pt_with_grad, vis_pt)], 
-                                "project_point":[vis_pt], "project_color":[vis_color], 
+                            visualize_context={"line":[(vis_pt_with_grad, vis_pt[0])],
+                                "project_point":vis_pt, "project_color":vis_color,
                                 "reset_line_point": True,
-                                "line_color":[[0,255,255]], "point_size": [5], "white_bg": True},
+                                "line_color":[[0,255,255]], "point_size": point_size, "white_bg": True},
                             cam_pos=self.cam_pos,
                             V=self.cam_V,
                             shifted_pose=np.eye(4),
@@ -505,8 +559,8 @@ class PlanningScene(object):
                             V=self.cam_V,
                             shifted_pose=np.eye(4),
                         )
- 
-            if vis_goal_set:            
+
+            if vis_goal_set:
                 goal = self.planner.selected_goals[optim_i]
                 goal_poses, goal_idx = get_sample_goals(self, self.traj.goal_set, goal)
                 bg_image = self.renderer.vis(
@@ -519,8 +573,8 @@ class PlanningScene(object):
                             shifted_pose=np.eye(4),
                         ).astype(np.float32)
                 bg_mask = (bg_image == 255).sum(-1) != 3
-                bg_image[:,:,[1, 2]] *= 0.1   
-                
+                bg_image[:,:,[1, 2]] *= 0.1
+
                 bg_image2 = self.renderer.vis(
                             goal_poses[-3:],
                             goal_idx[-3:],
@@ -531,12 +585,12 @@ class PlanningScene(object):
                             shifted_pose=np.eye(4),
                         ).astype(np.float32)
                 bg_mask2 = (bg_image2 == 255).sum(-1) != 3
-                bg_image2[:,:,[0, 2]] *= 0.1 # green   
+                bg_image2[:,:,[0, 2]] *= 0.1 # green
                 bg_image[bg_mask2] = bg_image2[bg_mask2]
                 bg_mask = bg_mask | bg_mask2
                 mix_frame_image[bg_mask] = bg_image[bg_mask] * 0.5 + mix_frame_image[bg_mask] * 0.5
                 mix_frame_image = mix_frame_image.astype(np.uint8)
-                if interact >= 1: 
+                if interact >= 1:
                     cv2.imshow('test', mix_frame_image[:,:,[2,1,0]])
                     cv2.waitKey(1)
             return mix_frame_image
@@ -545,23 +599,26 @@ class PlanningScene(object):
             frames = []
             for i in range(traj.shape[0]):
                 cls_indexes, poses = self.prepare_render_list(traj[i])
+                # get points rendering
+                obj_vis_points = [obj.vis_points for obj in self.env.objects if obj.vis_points is not None]
+
                 text = "OMG" if i < config.cfg.timesteps else "standoff"
                 if collision_pt and i > 0 and i < config.cfg.timesteps:
                     frames.append(
-                        fast_vis_collision(poses, cls_indexes, i, collision_pts, interact)
+                        fast_vis_collision(poses, cls_indexes, i, collision_pts, obj_vis_points, interact)
                     )
 
-                elif goal_set and i > 0:                    
+                elif goal_set and i > 0:
                     frames.append(
                         fast_vis_goalset(poses, cls_indexes, i, traj, interact)
-                    )                    
+                    )
                 else:
                     frames.append(
-                        fast_vis_simple(poses, cls_indexes, interact)
+                        fast_vis_simple(poses, cls_indexes, obj_vis_points, interact)
                     )
 
             if interact > 0:
-                fast_vis_end(poses, cls_indexes, nonstop)
+                fast_vis_end(poses, cls_indexes, nonstop, obj_vis_points)
             return frames
 
         if traj is None and len(self.planner.history_trajectories) > 0:
@@ -574,7 +631,8 @@ class PlanningScene(object):
             collision_pts = collision_pts[-len(traj) :]
         elif traj_type == 2:
             traj = np.concatenate([self.traj.start[None, :], traj], axis=0)
-
+        elif traj_type == 3:
+            traj = self.traj.end[None, :]
         frames = fast_debug_traj(traj)
         if write_video:
             if not hasattr(self, "video_writer"):
@@ -613,17 +671,16 @@ class PlanningScene(object):
         r = self.env.robot.robot_kinematics
         joints = wrap_value(joints)
         robot_poses = r.forward_kinematics_parallel(
-            np.array(joints)[None, ...], base_link=config.cfg.base_link
+            np.array(joints)[None, ...], base_link=config.cfg.base_link, offset=config.cfg.robot_vis_offset
         )[0]
         cls_indexes = list(range(10))
         poses = [pack_pose(pose) for pose in robot_poses]
         base_idx = 10
-        cls_indexes += [idx + base_idx for idx in self.env.indexes]
-        object_pose = [obj.pose for obj in self.env.objects]
+        cls_indexes += [idx + base_idx for idx in self.env.indexes if self.env.objects[idx].vis_points is None]
+        object_pose = [obj.pose for obj in self.env.objects if obj.vis_points is None]
         if len(self.env.objects) > 0 and self.env.objects[self.env.target_idx].attached:
             object_pose[self.env.target_idx] = compose_pose(
-                poses[7], self.env.objects[self.env.target_idx].rel_hand_pose
-            )
+                poses[7], self.env.objects[self.env.target_idx].rel_hand_pose )
         poses = poses + object_pose
         return cls_indexes, poses
 
@@ -670,7 +727,7 @@ class PlanningScene(object):
         resize = [1.0 for _ in links]
 
         """ objects """
-        models += [obj.mesh_path for obj in self.env.objects]
+        models += [obj.mesh_path for obj in self.env.objects if os.path.exists(obj.mesh_path)]
         textures += ["" for _ in models]
         colors += [[255, 0, 0] for obj in self.env.objects]
         resize += [obj.resize for obj in self.env.objects]
@@ -681,8 +738,9 @@ class PlanningScene(object):
         renderer.set_camera_default()
         renderer.set_light_pos(np.random.uniform(-0.1, 0.1, 3))
         renderer.set_light_pos(np.ones(3) * 1.2)
-        self.cam_pos = config.cfg.cam_pos
         self.renderer = renderer
+
+        self.cam_pos = config.cfg.cam_pos
         self.cam_V = config.cfg.cam_V
         print("Renderer loading time: {:.3f}".format(time.time() - start_time))
 
@@ -693,15 +751,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-v", "--vis", help="visualization", action="store_true" 
+        "-v", "--vis", help="visualization", action="store_true"
     )
     parser.add_argument(
-        "-vc", "--vis_collision_pt", help="collision visualization", action="store_true" 
-    ) 
+        "-vc", "--vis_collision_pt", help="collision visualization", action="store_true"
+    )
     parser.add_argument(
-        "-vg", "--vis_goalset", help="goalset visualization", action="store_true" 
-    )           
- 
+        "-vg", "--vis_goalset", help="goalset visualization", action="store_true"
+    )
+
     parser.add_argument("-f", "--file", help="filename", type=str, default="demo_scene_1")
     parser.add_argument("-w", "--write_video", help="write video", action="store_true")
     parser.add_argument("-g", "--grasp", help="grasp initialization", type=str, default="grasp")
@@ -721,26 +779,26 @@ if __name__ == "__main__":
     )
     config.cfg.traj_init = args.grasp
     config.cfg.vis = args.vis or args.write_video
-    
+
     if not args.experiment:
         scene = PlanningScene(config.cfg)
         info = scene.step()
         if args.vis or args.write_video:
-            scene.fast_debug_vis(interact=int(args.vis), write_video=args.write_video, 
+            scene.fast_debug_vis(interact=int(args.vis), write_video=args.write_video,
                         nonstop=True, collision_pt=args.vis_collision_pt, goal_set=args.vis_goalset)
     else:
-        scene_files = ['scene_{}'.format(i) for i in range(100)]    
-        for scene_file in scene_files:   
+        scene_files = ['scene_{}'.format(i) for i in range(100)]
+        for scene_file in scene_files:
             config.cfg.output_video_name = "output_videos/" + scene_file
-            config.cfg.output_video_name = config.cfg.output_video_name + ".avi"     
+            config.cfg.output_video_name = config.cfg.output_video_name + ".avi"
             config.cfg.scene_file = scene_file
             config.cfg.use_standoff = False
 
             scene = PlanningScene(config.cfg)
-            info = scene.step() 
-    
+            info = scene.step()
+
             if args.vis or args.write_video:
                 scene.fast_debug_vis(interact=int(args.vis), write_video=args.write_video, nonstop=True,
                                      collision_pt=args.vis_collision_pt, goal_set=args.vis_goalset)
-                scene.renderer.release()
- 
+                if args.vis:
+                    scene.renderer.release()

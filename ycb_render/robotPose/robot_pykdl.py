@@ -108,15 +108,14 @@ class robot_kinematics(object):
         self._joint2tips = robot_info["_joint2tips"]
         self._joint_name = robot_info["_joint_name"]
         self.center_offset = np.array(robot_info["center_offset"])
+        
         self._link_names = robot_info["_link_names"]
 
         self._base_link, self._tip_link = "panda_link0", "panda_hand"
         self._num_jnts = 7
+        self._urdf_path = os.path.join(cur_path, data_path, "data/robots", "panda_arm_hand.urdf")
         self._robot = URDF.from_xml_string(
-            open(
-                os.path.join(cur_path, data_path, "data/robots", "panda_arm_hand.urdf"),
-                "r",
-            ).read()
+            open(self._urdf_path, "r").read()
         )
 
         self._kdl_tree, _ = kdl_tree_from_urdf_model(self._robot)
@@ -193,7 +192,7 @@ class robot_kinematics(object):
             pose2origin = np.array(self._joint_origin)
             joint_pose = np.matmul(
                 output_pose, self._tip2joint
-            )  # pose_joint.dot(poses[idx])
+            )   
             joint_axis = np.matmul(joint_pose[..., :3, :3], pose2axis[..., None])[
                 ..., 0
             ]
@@ -204,11 +203,56 @@ class robot_kinematics(object):
 
         if offset:  # for on
             output_pose = np.matmul(output_pose, self.center_offset)
+        else:
+            right_finger_offset = self.center_offset[-1]
+            right_finger_offset[...,1, 3] = 0
+            output_pose[:, -1][:, :3, :3] = np.matmul(output_pose[:, -1][:, :3, :3], right_finger_offset[:3, :3])
+            
 
         if return_joint_info:
             return output_pose, joint_origin, joint_axis
         else:
             return output_pose
+
+    def ik(self, pos, rot, q0=None):
+   
+        result = self.ik_solver.get_ik(
+            qinit=q0,
+            x=pos[0],
+            y=pos[1],
+            z=pos[2],
+            rx=rot[0],
+            ry=rot[1],
+            rz=rot[2],
+            rw=rot[3],)
+        return result
+
+    def inverse_kinematics_trac_ik(self, position, orientation=None, seed=None, use_trac_ik=False):
+        """
+        Inverse kinematics in radians
+        """
+         
+        try:
+            from trac_ik_python.trac_ik import IK
+        except:
+            print('Trac IK required!')
+            raise 
+        if not hasattr(self, 'ik_solver'):
+            urdfstring = ''.join(open(self._urdf_path, 'r').readlines()); 
+            self.ik_solver = IK(self._base_link, self._tip_link,  urdf_string=urdfstring, solve_type="Distance")
+
+        position = position.astype(np.float64)
+        orientation = orientation.astype(np.float64)
+        result = self.ik_solver.get_ik(
+            qinit=seed.astype(np.float64),
+            x=position[0],
+            y=position[1],
+            z=position[2],
+            rx=orientation[0],
+            ry=orientation[1],
+            rz=orientation[2],
+            rw=orientation[3])
+        return result
 
     def inverse_kinematics(self, position, orientation=None, seed=None):
         """

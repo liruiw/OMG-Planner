@@ -68,6 +68,7 @@ class Optimizer(object):
         self.cfg.obstacle_weight = (
             self.cfg.base_obstacle_weight * self.cfg.cost_schedule_decay ** self.step
         )
+         
         self.cfg.smoothness_weight = (
             self.cfg.smoothness_base_weight * self.cfg.cost_schedule_boost ** self.step
         )
@@ -122,7 +123,7 @@ class Optimizer(object):
         info["text"] = self.report(curve, info)
         if (info["terminate"] and not force_update) or info_only:
             return info
-
+        
         if self.cfg.goal_set_proj:
             update = self.goal_set_projection(traj, grad)
             traj.update(update)
@@ -150,7 +151,7 @@ class Optimizer(object):
         """
         cnt = 0
         traj_v = self.compute_traj_v(curve)
-
+         
         while (np.linalg.norm(traj_v) > 1e-2) and cnt < self.cfg.joint_limit_max_steps:
             traj_vstar = self.cfg.Ainv.dot(traj_v)
             maxidx = np.unravel_index(np.abs(traj_v).argmax(), traj_v.shape)

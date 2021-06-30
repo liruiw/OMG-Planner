@@ -310,13 +310,22 @@ class Cost(object):
         for idx, obs in enumerate(self.env.objects):
             if obs.name == "floor" or obs.name in self.cfg.disable_collision_set:
                 disables[idx] = 1
- 
+
             padding_scale = 1
             eps = self.cfg.epsilon
             clearances[idx] = self.cfg.clearance
             epsilons[idx] = eps
             padding_scales[idx] = padding_scale
             poses[idx] = se3_inverse(obs.pose_mat)
+
+            if idx == self.env.target_idx:
+                clearances[idx] = self.cfg.target_clearance
+                epsilons[idx] = self.cfg.target_epsilon
+
+        if self.env.objects[self.env.target_idx].attached:
+            clearances[-1] = 0.0 # table
+            epsilons[-1]  = 0.05
+            padding_scales[-1] = 0.5
 
         # forward layer
         poses = torch.from_numpy(poses).cuda()
@@ -337,11 +346,6 @@ class Cost(object):
         potentials = potentials.reshape([n, m, p])
         potential_grads = potential_grads.reshape([n, m, p, 3])
         collides = collides.reshape([n, m, p])
-
-        if self.cfg.use_standoff and self.cfg.goal_set_proj:
-            potentials[-self.cfg.reach_tail_length :] = 0
-            potential_grads[-self.cfg.reach_tail_length :] = 0
-            collides[-self.cfg.reach_tail_length :] = 0
 
         if uncheck_finger_collision == -1:
             potentials[:, -2:] *= 0.1  # soft
@@ -475,20 +479,25 @@ class Cost(object):
             self.cfg.obstacle_weight * obstacle_loss.sum(-1)
             + self.cfg.smoothness_weight * smoothness_loss[:-1]
         )
-   
+
         goal_dist = (
             np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
             if self.cfg.goal_set_proj
             else 0
         )
-         
+
         terminate = (
             (collide <= self.cfg.allow_collision_point)
             and self.cfg.pre_terminate
             and (goal_dist < 0.01)
             and smoothness_loss_sum < self.cfg.terminate_smooth_loss
         )
-         
+
+        failure_terminate = (
+            (collide >= self.cfg.allow_collision_point * 10)
+            or smoothness_loss_sum >= self.cfg.terminate_smooth_loss * 2.5
+        )
+
         execute = (collide <= self.cfg.allow_collision_point) and (
             smoothness_loss_sum < self.cfg.terminate_smooth_loss
         )
@@ -509,6 +518,7 @@ class Cost(object):
             "weighted_grasp_grad": 0,
             "weighted_grasp": 0,
             "gradient": grad,
+            "failure_terminate": failure_terminate,
             "cost": cost,
             "grad": np.linalg.norm(grad),
             "terminate": terminate,

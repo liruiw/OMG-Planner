@@ -92,41 +92,39 @@ class Learner(object):
         self.q = np.ones(self.num_experts) / self.num_experts
 
         if (
-            self.alg_name == "Baseline"
-            or (self.cfg.goal_idx == -2 and self.alg_name != "Proj")
-            and len(self.env.objects[self.env.target_idx].reach_grasps) > 0  
+            self.alg_name != "Proj"
+            and len(self.env.objects[self.env.target_idx].reach_grasps) > 0
         ):
             costs = self.cost_vector()
             sorted_idx = np.argsort(costs)
-            self.traj.goal_idx = np.argmin(costs)  # sorted_idx[25] # np.argmin(costs)
-            self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
+            self.traj.goal_idx = np.argmin(costs)
+            self.traj.end = self.traj.goal_set[self.traj.goal_idx]
             self.traj.interpolate_waypoints()
 
     def cost_vector(self):
         """
         objective cost estimate
         """
-        clamp = 1  # 1
+        clamp = 1
         start = clamp + int((self.t / self.cfg.optim_steps) * (self.cfg.timesteps)) - 1
         start = min(start, self.cfg.timesteps - clamp)
-        if self.cfg.report_time:
-            print("online learning, start time step", start)
+
         traj_start = self.traj.data[start]
         n = self.cfg.timesteps - start
         m = traj_start.shape[0]
-        if (
+        if self.cfg.traj_init == "grasp" and (
             len(self.env.objects[self.env.target_idx].reach_grasps) == 0
-            and self.cfg.traj_init == "grasp"
+            or (self.cfg.use_standoff and len(np.array(self.env.objects[self.env.target_idx].reach_grasps).shape) == 2)
         ):
             return np.zeros(1)
 
         goal_set = (
-            self.env.objects[self.env.target_idx].reach_grasps[:, -1, :]
-            if self.cfg.use_standoff
-            else self.traj.goal_set
+        np.array(self.env.objects[self.env.target_idx].reach_grasps)[:, -1, :]
+        if self.cfg.use_standoff
+        else self.traj.goal_set
         )
-        s = time.time()
 
+        s = time.time()
         interpolated_traj = multi_interpolate_waypoints(
             traj_start, goal_set, n, m, "linear"
         )
@@ -140,35 +138,24 @@ class Learner(object):
             uncheck_finger_collision=0,
             start=traj_start,
             end=goal_set,
-        )[
-            0
-        ]  # n x (m + 1) x p
+        )[0]  # n x (m + 1) x p
         if self.cfg.report_time:
             print("goal selection potentials time:", time.time() - s, n)
 
         collision_potentials = (
             torch.sum(collision_potentials, (-2, -1))
-            .reshape([-1, n])
-            .sum(-1)
-            .detach()
-            .cpu()
-            .numpy()
+            .reshape([-1, n]).sum(-1).detach().cpu().numpy()
         )
         smooth = (
             np.linalg.norm(
-                np.diff(traj_start - np.array(self.traj.goal_set), axis=-1), axis=-1
-            )
-            ** 2
-            * 0.3
-        )
+                np.diff(traj_start - np.array(self.traj.goal_set), axis=-1), axis=-1 ) ** 2)
+
         potentials = (
             self.cfg.base_obstacle_weight * collision_potentials
             + self.cfg.smoothness_base_weight * self.cfg.dist_eps * smooth
         )
         if self.cfg.normalize_cost:
-            potentials = potentials / np.linalg.norm(
-                potentials
-            )  # normalize cost vector
+            potentials = potentials / np.linalg.norm( potentials )  # normalize cost vector
 
         return potentials
 
@@ -209,7 +196,7 @@ class Learner(object):
 
     def Proj(self):
         """
-        Goal set projection 
+        Goal set projection
         """
         cur_end_point = self.traj.data[-1]
         diff = cur_end_point - np.array(self.traj.goal_set)

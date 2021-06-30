@@ -6,7 +6,7 @@ with deep learning frameworks. This renderer is created by Fei Xia (feixia@stanf
 - EGL headless rendering, so a running x server is not required
 - Rendering to multiple texture buffers, so it can render rgb, segmentation,
 point cloud in a single shader call
-- Uses OpenGL - CUDA interoperation to render to pytorch tensor directly.
+- Uses OpenGL - CUDA interoperation to render to pytorch tensor directly and can render 1024x1024 images at 1300 fps.
 - Support `eglQueryDevicesEXT` and `eglGetPlatformDisplayEXT` via `pybind11`. So it
 is easy to choose which GPU to use.
 - Minimalistic, it uses raw OpenGL, doesn't rely on third-party GL helper libraries other than 

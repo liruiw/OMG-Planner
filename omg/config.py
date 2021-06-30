@@ -31,16 +31,16 @@ cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
 cfg.base_obstacle_weight = 1.0  # 1.0 weight for obstacle cost in total cost
 cfg.base_grasp_weight = 1.0  # weight for grasp cost in total cost
 cfg.cost_schedule_decay = 1  # cost schedule decay for obstacle cost weight wrt base
-cfg.cost_schedule_boost = 1.02  # cost schedule boost for smoothness cost weight  
- 
+cfg.cost_schedule_boost = 1.02  # cost schedule boost for smoothness cost weight
+
 cfg.base_step_size = 0.1  # initial step size in gradient descent
 cfg.step_decay_rate = 1.0  # decay rate for step size in gradient descent
 cfg.joint_limit_max_steps = 10  # maximum smooth projection steps for joint limit
 cfg.optim_steps = 50  # optimization steps for each planner call
- 
+
 """ planner parameters """
 cfg.epsilon = 0.2  # the obstacle padding distance that has gradient
-cfg.target_epsilon = 0.03  # the obstacle padding distance for target object
+cfg.target_epsilon = 0.1  # the obstacle padding distance for target object
 cfg.target_obj_collision = 0.0  # 0.0 scale factor for target object collision
 cfg.collision_point_num = 15  # collision point sample number for each link
 cfg.time_interval = 0.1  # time inverval for computing velocity
@@ -49,6 +49,7 @@ cfg.link_collision_weight = np.ones([10, 1])  # link collision weight depending 
 cfg.link_smooth_weight = np.ones(9) # link smooth weight depending on size
 
 cfg.clearance = 0.01  # clerance threshold for determining if a traj has collision
+cfg.target_clearance = 0.0   # clerance threshold for determining if a traj has collision with target
 cfg.ik_clearance = 0.03  # clerance threshold for determining if an ik has collision
 cfg.target_size = 1.0  # target object's actual sdf resize ratio
 cfg.obstacle_size = 1  # obstacle's resize ratio
@@ -60,7 +61,7 @@ cfg.penalize_constant = 5  # scaling negative sdf values to avoid collision
 cfg.grasp_optimize = False  # the option of optimizing grasp term
 cfg.traj_init = "grasp"  # use ik or precomputed grasp list to initialize the goal
 cfg.traj_interpolate = "cubic"  # interpolate trajectory waypoints between start and end
- 
+
 cfg.goal_set_proj = True  # use the goal set variant of CHOMP
 cfg.goal_set_max_num = 100  # the maximum number of goals in the goal set
 cfg.ol_alg = "MD"  # the online learning algorithm for updating grasp distribution
@@ -71,7 +72,7 @@ cfg.ik_seed_num = 12  # anchor seed number to solve for inverse kinematics
 cfg.finger_hard_constraint = True  # direct constraint on the fingers
 cfg.uncheck_finger_collision = 0  # -1 means uncheck finger collision during optimization
 cfg.allow_collision_point = 5  # allowing collision point number for the entire trajectory
- 
+
 cfg.soft_joint_limit_padding = 0.2  # constraint planning joint limit to be smaller than actual ones
 cfg.extra_smooth_steps = 20  # extra steps for postprocessing fixed goal
 cfg.clip_grad_scale = 10.0  # clip the update gradients
@@ -80,7 +81,9 @@ cfg.disable_collision_set = []  # object names to fully disable collision check
 cfg.use_standoff = True  # use use_standoff for grasp stability
 cfg.standoff_dist = 0.08  # standoff distance before grasping
 cfg.remove_flip_grasp = True  # remove all grasps that require wrist to rotate over 180 degrees
- 
+cfg.remove_base_rotate_grasp = True  # remove all grasps that require base to rotate over 40 degrees
+cfg.remove_camera_downward_grasp = True  # remove all grasps that require base to rotate over 40 degrees
+
 cfg.augment_flip_grasp = True  # augment grasps by flipping over 180 degrees
 cfg.target_hand_filter_angle = 120  # for filtering grasps that require heavy rotation
 cfg.dynamic_timestep = False  # for dynamically choosing length of the trajectory
@@ -95,7 +98,10 @@ cfg.colored_gripper = False  # use colored robot model
 cfg.traj_max_step = 50  # maximum step
 cfg.traj_min_step = 2  # minimum step
 cfg.default_lazy = True # lazy grasp computation
-cfg.y_upsample = False # upsampling grasps around the antipodal contacts
+cfg.y_upsample = False # upsampling grasps by tilting around the antipodal contacts
+cfg.z_upsample = True # upsampling grasps in gravity direction for placing
+cfg.use_point_sdf = False # use SDF from point cloud perception instead of object model and pose
+cfg.robot_vis_offset = True # visualization offset for mesh center
 
 """ global parameter """
 cfg.root_dir = current_dir + "/../"  # root directory
@@ -119,8 +125,9 @@ cfg.cam_pos = [
 ]  # the static camera position for visualization
 cfg.cam_V = None  # the extrinsics for visualization
 cfg.report_time = False  # verbose plan time check
-cfg.output_video_name = "test_video.avi"
-cfg.silent = False
+cfg.output_video_name = "test_video.avi" # output video
+cfg.silent = False # mute
+cfg.timeout = 3. # -1.
 
 
 """ global function """
