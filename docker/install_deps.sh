@@ -52,7 +52,7 @@ cd OMG-Planner
 pip install --upgrade pip==21.2.4
 pip install -U setuptools
 pip install -r requirements.txt
-pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0  -f https://download.pytorch.org/whl/torch_stable.html
+pip install torch torchvision torchaudio  -f https://download.pytorch.org/whl/torch_stable.html
  
 # Eigen
 git clone https://github.com/eigenteam/eigen-git-mirror.git
@@ -90,11 +90,6 @@ cd ycb_render
 python3 setup.py develop
 cd ..
 
-# omg layer
-cd layers
-python3 setup.py install
-cd ..
-
 # KDL
 cd orocos_kinematics_dynamics
 cd sip-4.19.3
@@ -114,5 +109,10 @@ make -j8;
 make install
 
 cd ../../..
+
+echo "Might depend on local gpu arch and torch"
+# cd layers
+# python3 setup.py install
+# cd ..
 
 bash download_data.sh

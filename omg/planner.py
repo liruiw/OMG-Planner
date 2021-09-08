@@ -550,7 +550,7 @@ class Planner(object):
                         unique_grasps = [goal_set[0]]  # diversity
                         indexes = []
 
-                        for j, joint in enumerate(goal_set):
+                        for j, joint in enumerate(goal_set[1:]):
                             dists = np.linalg.norm(
                                 np.array(unique_grasps) - joint, axis=-1
                             )
