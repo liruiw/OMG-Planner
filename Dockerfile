@@ -28,15 +28,6 @@ RUN yes "Y" | /tmp/install_deps.sh
 
 # setup python environment
 RUN cd $WORKDIR
-ENV VIRTUAL_ENV=/home/$USER_NAME/omg
-RUN python3 -m virtualenv --python=/usr/bin/python3 $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-
-# install python requirements
-RUN pip install --upgrade pip==21.2.4
-RUN pip install -U setuptools
-COPY ./requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt
 
 # install GLX-Gears (for debugging)
 RUN apt-get update && apt-get install -y \
@@ -44,8 +35,9 @@ RUN apt-get update && apt-get install -y \
    rm -rf /var/lib/apt/lists/*
 
 # change ownership of everything to our user
- 
 RUN cd ${USER_HOME_DIR} && echo $(pwd) && chown $USER_NAME:$USER_NAME -R .
 
-# build libraries
-ENTRYPOINT bash -c "export OMG_ROOT=~/omg && /bin/bash"
+
+# entry point
+ENTRYPOINT bash -c "export OMG_ROOT=~/OMG && /bin/bash"
+

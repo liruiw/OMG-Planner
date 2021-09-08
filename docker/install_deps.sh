@@ -26,8 +26,6 @@ DEBIAN_FRONTEND=noninteractive apt install --no-install-recommends \
   ffmpeg \
   nvidia-settings \
   libffi-dev \
-  flex \
-  bison \
   build-essential \
   git \
   wget \
@@ -38,7 +36,11 @@ DEBIAN_FRONTEND=noninteractive apt install --no-install-recommends \
   cmake \
   protobuf-compiler \
   libxml2-dev \
-  libxslt-dev
+  libxslt-dev \
+  libglfw3-dev \
+  libgl1-mesa-dev \
+  libglu1-mesa-dev \
+  freeglut3-dev
 
 
 # Eigen
@@ -49,6 +51,7 @@ cd build
 cmake ..
 make -j8
 sudo make install
+make install
 cd ../..
 
 # Assimp
@@ -68,30 +71,34 @@ cd Projects
 git clone https://github.com/liruiw/OMG-Planner.git --recursive
 cd OMG-Planner
 
+# install python requirements
+pip install --upgrade pip==21.2.4
+pip install -U setuptools
+pip install -r requirements.txt
+
 # Sophus
 cd Sophus
 mkdir build
 cd build
-cmake .. -Wno-error=deprecated-declarations -Wno-deprecated-declarations
+cmake ..  
 make -j8
 make install
 cd ../..
 
-
 # ycb render
 cd ycb_render
-python setup.py develop
+python3 setup.py develop
 cd ..
 
 # omg layer
 cd layers
-python setup.py install
+python3 setup.py install
 cd ..
 
 # KDL
 cd orocos_kinematics_dynamics
 cd sip-4.19.3
-python configure.py
+python3 configure.py
 make -j8; sudo make install
 
 export ROS_PYTHON_VERSION=3
@@ -102,25 +109,8 @@ make -j8; sudo make install
 
 cd ../../python_orocos_kdl
 mkdir build; cd build;
-cmake ..  -DPYTHON_EXECUTABLE=~/usr/bin/python
-make -j8;  cp PyKDL.so ~/anaconda2/envs/omg/lib/python3.6/site-packages/
+cmake ..   
+make -j8;   
+make install
 
-# install PointNet
-git clone https://github.com/liruiw/Pointnet2_PyTorch.git
-cd Pointnet2_PyTorch
-pip install -r requirements.txt
-pip install .
-
-# install GA-DDPG  
-cd ~/Projects
-git clone https://github.com/liruiw/GA-DDPG.git  
-cd  GA-DDPG
-rm -rf OMG
-ln -s ../OMG-Planner OMG
-
-# install HCG  
-cd ~/Projects
-git clone https://github.com/liruiw/HCG.git  
-cd  HCG
-rm -rf OMG
-ln -s ../OMG-Planner OMG
+bash download_data.sh
