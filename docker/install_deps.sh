@@ -111,8 +111,8 @@ make install
 cd ../../..
 
 echo "Might depend on local gpu arch and torch"
-# cd layers
-# python3 setup.py install
-# cd ..
+cd layers
+python3 setup.py install
+cd ..
 
 bash download_data.sh
