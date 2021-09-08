@@ -33,7 +33,6 @@ DEBIAN_FRONTEND=noninteractive apt install --no-install-recommends \
   xserver-xorg \
   xserver-xorg-video-fbdev \
   xauth \
-  cmake \
   protobuf-compiler \
   libxml2-dev \
   libxslt-dev \
@@ -43,6 +42,18 @@ DEBIAN_FRONTEND=noninteractive apt install --no-install-recommends \
   freeglut3-dev
 
 
+# clone OMG-Planner
+mkdir Projects
+cd Projects
+git clone https://github.com/liruiw/OMG-Planner.git --recursive
+cd OMG-Planner
+
+# install python requirements
+pip install --upgrade pip==21.2.4
+pip install -U setuptools
+pip install -r requirements.txt
+pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0  -f https://download.pytorch.org/whl/torch_stable.html
+ 
 # Eigen
 git clone https://github.com/eigenteam/eigen-git-mirror.git
 cd eigen-git-mirror
@@ -64,17 +75,6 @@ cmake ..
 make -j8
 make install
 cd ../..
-
-# clone OMG-Planner
-mkdir Projects
-cd Projects
-git clone https://github.com/liruiw/OMG-Planner.git --recursive
-cd OMG-Planner
-
-# install python requirements
-pip install --upgrade pip==21.2.4
-pip install -U setuptools
-pip install -r requirements.txt
 
 # Sophus
 cd Sophus
@@ -112,5 +112,7 @@ mkdir build; cd build;
 cmake ..   
 make -j8;   
 make install
+
+cd ../../..
 
 bash download_data.sh

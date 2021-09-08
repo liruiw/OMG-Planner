@@ -65,55 +65,23 @@ git clone https://github.com/liruiw/OMG-Planner.git --recursive
     make -j8;  cp PyKDL.so ~/anaconda2/envs/omg/lib/python3.6/site-packages/
     ```
 
-### Docker
+
 ## Docker Setup
-
-Install [Docker](https://docs.docker.com/engine/install/ubuntu/) and [NVIDIA Docker](https://github.com/NVIDIA/nvidia-docker#ubuntu-160418042004-debian-jessiestretchbuster). 
-
-Modify [docker_build.py](scripts/docker_build.py) and [docker_run.py](scripts/docker_run.py) to your needs.
-
-#### Build 
-
-Build the image:
-
-```bash
-$ python docker/docker_build.py 
-```
-
-#### Run (Local)
-
-For local machines:
-
-```bash
-$ python docker/docker_run.py
- 
-  source ~/omg_env/bin/activate
-  cd $OMG_ROOT
-```
-
-### Docker Setup
 
 Install [Docker](https://docs.docker.com/engine/install/ubuntu/) and [NVIDIA Docker](https://github.com/NVIDIA/nvidia-docker#ubuntu-160418042004-debian-jessiestretchbuster). 
 
 Modify [docker_build.py](docker/docker_build.py) and [docker_run.py](docker/docker_run.py) to your needs.
 
-#### Build 
-
-Build the image:
+0. Build the image:
 
 ```bash
-$ python scripts/docker_build.py 
+$ python docker/docker_build.py 
 ```
 
-#### Run (Local)
-
-For local machines:
+1. For local machines:
 
 ```bash
-$ python scripts/docker_run.py
- 
-  source ~/omg_env/bin/activate
-  cd $OMG_ROOT
+$ python docker/docker_run.py
 ```
 
 ### Common Usages
