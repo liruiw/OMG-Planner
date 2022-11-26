@@ -12,3 +12,4 @@ easydict
 pyyaml==3.12
 cmake
 future
+gdown
